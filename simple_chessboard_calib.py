@@ -105,6 +105,10 @@ class KinectChessboardCalibrationExtrinsics:
         self.lock_=Lock()
         self.final_draw2d_th=Thread()
         
+        self.rvec = np.zeros((3,1),np.float32)
+        self.tvec = np.zeros((3,1),np.float32)
+        
+        self.useExtrinsicGuess = False
         # Output tf threads
         self.tf_thread = TfBroadcasterThread(self.kinect.link_frame,self.base_frame)
         self.tfcv_thread = TfBroadcasterThread(self.base_frame+'_cv',self.kinect.rgb_optical_frame)
@@ -208,7 +212,17 @@ class KinectChessboardCalibrationExtrinsics:
         s = self.ch_sq
         chess_width = self.ch_w
         chess_height= self.ch_h
-
+        try:
+            xline = (offset[0],offset[1]-1)
+            yline = (offset[0]-1,offset[1])
+            xline_end=(int(offset[0]+chess_height*s*scale),int(offset[1])-1)
+            yline_end=(int(offset[0])-1,int(offset[1]+chess_width*s*scale))
+            #print "OFFSETS : ",offset,xline,yline
+            cv2.line(img,xline,xline_end,(0,255,0),2)
+            cv2.line(img,yline,yline_end,(0,0,255),2)
+            
+        except Exception,e: print e
+        
         for pt in self.chess_pos:
             x = int((pt[0]-self.upper_left_corner_position[0])*scale+offset[0])
             y = int((pt[1]-self.upper_left_corner_position[1])*scale+offset[1])
@@ -252,8 +266,7 @@ class KinectChessboardCalibrationExtrinsics:
                 chess_pos.append(pos)
         return chess_pos
         
-    def calibration_opencv(self,rgb,h,w,sq_size,use_pnp = True,use_ransac = True,useExtrinsicGuess = True):
-        global rvec,tvec
+    def calibration_opencv(self,rgb,h,w,sq_size,use_pnp = True,use_ransac = True):
         cameraMatrix = self.kinect.rgb_camera_info.K.reshape(3,3)
         distCoeffs = np.array(self.kinect.rgb_camera_info.D)
         
@@ -281,10 +294,17 @@ class KinectChessboardCalibrationExtrinsics:
             cv2.drawChessboardCorners(rgb, (h,w), corners,ret)
 
             if use_pnp:
-                if not use_ransac:
-                    retval,rvec,tvec = cv2.solvePnPRansac(objp, corners,cameraMatrix ,distCoeffs,rvec, tvec, useExtrinsicGuess)
-                else:
-                    rvec,tvec,inliers = cv2.solvePnPRansac(objp, corners,cameraMatrix ,distCoeffs)
+                if use_ransac:
+                    if not self.useExtrinsicGuess:
+                        rvec,tvec,_ = cv2.solvePnPRansac(objp, corners,cameraMatrix ,distCoeffs)
+                        self.rvec = rvec
+                        self.tvec = tvec
+                        self.useExtrinsicGuess = True
+                    else:
+                        r,t,_ = cv2.solvePnPRansac(objp, corners,cameraMatrix ,distCoeffs,self.rvec, self.tvec, self.useExtrinsicGuess)
+                        rvec = self.rvec
+                        tvec = self.tvec
+
                 cv2.imshow('findChessboardCorners - OpenCV',rgb)
             else:
                 ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],cameraMatrix,None,flags=cv2.CALIB_USE_INTRINSIC_GUESS)#flags=cv2.CALIB_FIX_ASPECT_RATIO)
@@ -300,7 +320,7 @@ class KinectChessboardCalibrationExtrinsics:
             cv2.imshow('findChessboardCorners - OpenCV',rgb)
             ret_R,_ = cv2.Rodrigues(rvec)
             
-            print tvec,rvec
+            #print tvec,rvec
             # Inverse the transformation
             #ret_Rt = np.matrix(ret_R).T
             ret_Rt = np.matrix(ret_R)
