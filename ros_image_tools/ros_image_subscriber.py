@@ -46,7 +46,7 @@ class ROSImageSubscriber(Thread):
         if(use_compression):
             self.start_compression_threads()
 
-        print self,' subscribing to : ',self.topics
+        print(str(self)+' subscribing to : '+str(self.topics))
         self.mutex = [Lock()]*len(topics)
         
         self.has_received_first = [False]*len(topics)

@@ -13,17 +13,24 @@ import tf
 import rospy
 from threading import Event
 from sensor_msgs.msg import CameraInfo
+import os 
 
 class Kinect:
     def __init__(self,camera_name='/camera',queue_size=1,compression=True,use_rect=False):
         self.camera_name = camera_name
+        
+        ## Should be use rectified images ?
         if use_rect:
             rect="_rect"
         else:
             rect=""
+        
+        ## Topics
         rgb_topic = camera_name+'/rgb/image'+rect+'_color'
         depth_topic = camera_name+'/depth/image'+rect
         depth_registered_topic = camera_name+'/depth_registered/image'+rect
+        
+        ## Frames
         self.depth_optical_frame = camera_name+'_depth_optical_frame'
         self.link_frame = camera_name+'_link'
         self.depth_frame = camera_name+'_depth_frame'
@@ -46,12 +53,25 @@ class Kinect:
         self.cloud_event = Event()
 
 
-
-
     def get_camera_info(self,camera_name,img_name='depth'):
         import yaml
         camera_info = CameraInfo()
         file_url = rospy.get_param(camera_name+'/driver/'+img_name+'_camera_info_url').replace('file://','')
+        if not os.path.exists(file_url):
+            fx_d = 5.9421434211923247e+02;
+            fy_d = 5.9104053696870778e+02;
+            cx_d = 3.3930780975300314e+02;
+            cy_d = 2.4273913761751615e+02;
+            camera_info.K = np.zeros((9,1))
+            camera_info.K[0] = fx_d
+            camera_info.K[4] = fy_d
+            camera_info.K[2] = cx_d
+            camera_info.K[5] = cy_d
+            camera_info.K[8] = 1
+
+            rospy.logwarn( "No camera info found at url ["+file_url+"], using default values")
+            return camera_info
+    
         print 'Loading camera '+img_name+' info at:',file_url
         with open(file_url, 'r') as f:
             calib = yaml.safe_load(f.read())
@@ -80,6 +100,7 @@ class Kinect:
             return self.depth_registered_th.get_window_name()
         else:
             return self.depth_th.get_window_name()
+            
     def release(self):
         self.release_rgb()
         self.release_depth()
@@ -154,8 +175,6 @@ class Kinect:
 
     def world_to_depth(self,pt):
         if False:#self.depth_camera_info.K:
-
-
             P = np.matrix(self.depth_camera_info.P).reshape(3,4)
             pt = np.matrix([pt[0],pt[1],pt[2],1]).T
             print "P:",P
@@ -166,16 +185,15 @@ class Kinect:
 
         else:
             pt = np.matrix(pt).T
-            if self.depth_camera_info.K:
-                fx_d = self.depth_camera_info.K[0]
-                fy_d = self.depth_camera_info.K[4]
-                cx_d = self.depth_camera_info.K[2]
-                cy_d = self.depth_camera_info.K[5]
-            else:
-                fx_d = 5.9421434211923247e+02;
-                fy_d = 5.9104053696870778e+02;
-                cx_d = 3.3930780975300314e+02;
-                cy_d = 2.4273913761751615e+02;
+            fx_d = self.depth_camera_info.K[0]
+            fy_d = self.depth_camera_info.K[4]
+            cx_d = self.depth_camera_info.K[2]
+            cy_d = self.depth_camera_info.K[5]
+            #else:
+             #   fx_d = 5.9421434211923247e+02;
+              #  fy_d = 5.9104053696870778e+02;
+               # cx_d = 3.3930780975300314e+02;
+                #cy_d = 2.4273913761751615e+02;
 
             #transformedPos = invR*pt + invT
             invZ = 1.0 / pt[2]
@@ -214,7 +232,7 @@ class Kinect:
 
     def depth_to_world(self,x,y,depth_img=None,transform_to_camera_link=True):
 
-        if self.depth_camera_info.K:
+        if not len(self.depth_camera_info.K):
             fx_d = 1.0 / self.depth_camera_info.K[0]
             fy_d = 1.0 / self.depth_camera_info.K[4]
             cx_d = self.depth_camera_info.K[2]
