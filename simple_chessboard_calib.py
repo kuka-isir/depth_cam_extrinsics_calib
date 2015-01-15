@@ -80,7 +80,7 @@ class KinectChessboardCalibrationExtrinsics:
     def __init__(self,kinect_name,base_frame,chess_width,chess_height,square_size,upper_left_corner_position):
         if kinect_name[-1] == '/':
             kinect_name = kinect_name[:-1]
-        self.kinect = Kinect(kinect_name,queue_size=10,compression=True)
+        self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True)
         self.kinect_name = kinect_name
         self.base_frame = base_frame
         self.transform_name = 'calib_'+self.kinect_name[1:]
@@ -267,7 +267,10 @@ class KinectChessboardCalibrationExtrinsics:
         return chess_pos
         
     def calibration_opencv(self,rgb,h,w,sq_size,use_pnp = True,use_ransac = True):
-        cameraMatrix = self.kinect.rgb_camera_info.K.reshape(3,3)
+        #cameraMatrix = self.kinect.rgb_camera_info.K.reshape(3,3)
+        projMatrix = np.matrix(self.kinect.rgb_camera_info.P).reshape(3,4)
+        cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
+            
         distCoeffs = np.array(self.kinect.rgb_camera_info.D)
         
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.1)
@@ -332,6 +335,9 @@ class KinectChessboardCalibrationExtrinsics:
             quaternion = quaternion_from_matrix(T)
             #self.tfcv_thread.set_transformation(-ret_Rt*tvect,quaternion) 
             self.tfcv_thread.set_transformation(tvect,quaternion)
+            return True
+        return False
+
     def save_calib(self):
         time.sleep(1.0)
         if query_yes_no("Would you like to save the calibration ?"):
@@ -367,6 +373,7 @@ class KinectChessboardCalibrationExtrinsics:
                         cv2.circle(rgb,(int(p[0]),int(p[1])),1,(235,12,25),1)
                     #self.kinect.show_rgb()
                     cv2.imshow(self.kinect.get_rgb_window_name(), rgb)
+                    self.kinect.show_depth()
                     self.kinect.register_mouse_callback_runtime()# should be after imshow to get the mouse cb on the window
                     find_chess_th.join()
                     cv2.waitKey(3)

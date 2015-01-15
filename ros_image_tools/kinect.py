@@ -58,7 +58,7 @@ class Kinect:
         file_url = rospy.get_param(camera_name+'/driver/'+img_name+'_camera_info_url').replace('file://','')
         if not os.path.exists(file_url):
             if img_name == 'depth':
-                camera_info.K = np.matrix([610.183545355666, 0, 331.498179304952, 0, 610.613748569717, 257.128224589741, 0, 0, 1])
+                camera_info.K = np.array([610.183545355666, 0, 331.498179304952, 0, 610.613748569717, 257.128224589741, 0, 0, 1])
                 camera_info.D = np.array([-0.0388664532195436, 0.111397388172138, 0.00673931006062305, 0.00762574500287458, 0])
                 camera_info.P =  np.matrix([613.005981445312, 0, 334.904565660545, 0, 0, 614.685424804688, 259.144825464584, 0, 0, 0, 1, 0])
             elif img_name == 'rgb':
@@ -173,15 +173,14 @@ class Kinect:
             list_pt2d = pmin_all
 
     def world_to_depth(self,pt):
-        if True:#self.depth_camera_info.K:
+        if True:
             projMatrix = np.matrix(self.rgb_camera_info.P).reshape(3,4)
             cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
-            
             #cameraMatrix = np.matrix(self.rgb_camera_info.K).reshape(3,3)
             distCoeffs = np.matrix(self.rgb_camera_info.D)
             rvec,_ = cv2.Rodrigues(rotMatrix)
 
-            imgpoints2, _ = cv2.projectPoints(np.array([pt]), rvec, np.zeros(3), cameraMatrix, distCoeffs)
+            imgpoints2, _ = cv2.projectPoints(np.array([pt]), rvec, np.zeros(3),cameraMatrix, distCoeffs)
 
             #P =np.linalg.inv( np.matrix(self.depth_camera_info.P).reshape(3,4)
             #pt = np.matrix([pt[0],pt[1],pt[2],1]).T
@@ -214,24 +213,22 @@ class Kinect:
             res_y = max(0,min(int(raw_y), self.depth_camera_info.height))
             result=[res_x,res_y]
             return result
+    
+    def color_to_world(self,x,y):
+         fx_rgb = self.rgb_camera_info.K[0]
+         fy_rgb = self.rgb_camera_info.K[4]
+         cx_rgb = self.rgb_camera_info.K[2]
+         cy_rgb = self.rgb_camera_info.K[5]
 
-#==============================================================================
-#     def color_to_world(self,x,y):
-#         fx_rgb = 5.2921508098293293e+02
-#         fy_rgb = 5.2556393630057437e+02
-#         cx_rgb = 3.2894272028759258e+02
-#         cy_rgb = 2.6748068171871557e+02
-#
-#         v = self.depth_to_world(x, y)
-#         v[0] = (v[0]/9.9984628826577793e-01) - 1.9985242312092553e-02
-#         v[1] = (v[1]/9.9984628826577793e-01)
-#         v[2] = (v[2]/9.9984628826577793e-01) - 1.9985242312092553e-02
-#         result = [np.nan]*3
-#         result[0] = (v[0]*fx_rgb/v[2])+cx_rgb;
-#         result[1] = (v[1]*fy_rgb/v[2])+cy_rgb;
-#         result[2] = v[2];
-#==============================================================================
-        return result;
+         v = self.depth_to_world(x, y)
+         v[0] = (v[0]/9.9984628826577793e-01) - 1.9985242312092553e-02
+         v[1] = (v[1]/9.9984628826577793e-01)
+         v[2] = (v[2]/9.9984628826577793e-01) - 1.9985242312092553e-02
+         result = [np.nan]*3
+         result[0] = (v[0]*fx_rgb/v[2])+cx_rgb;
+         result[1] = (v[1]*fy_rgb/v[2])+cy_rgb;
+         result[2] = v[2];
+         return result;
 
     def raw_depth_to_meters(self, depth_value):
         # We use depth_registered so useless function
@@ -240,26 +237,21 @@ class Kinect:
         return 0.0
 
     def depth_to_world(self,x,y,depth_img=None,transform_to_camera_link=True):
-
-        if not len(self.depth_camera_info.K):
-            fx_d = 1.0 / self.depth_camera_info.K[0]
-            fy_d = 1.0 / self.depth_camera_info.K[4]
-            cx_d = self.depth_camera_info.K[2]
-            cy_d = self.depth_camera_info.K[5]
-        else:
-            fx_d = 1.0 / 5.9421434211923247e+02;
-            fy_d = 1.0 / 5.9104053696870778e+02;
-            cx_d = 3.3930780975300314e+02;
-            cy_d = 2.4273913761751615e+02;
+        projMatrix = np.matrix(self.rgb_camera_info.P).reshape(3,4)
+        cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
+        #cameraMatrix = self.depth_camera_info.K
+        fx_d = cameraMatrix[0,0]
+        fy_d = cameraMatrix[1,1]
+        cx_d = cameraMatrix[0,2]
+        cy_d = cameraMatrix[1,2]
 
         if depth_img is None:
             depth_img = self.get_depth()
-
         result = [np.nan]*3
         try:
             if depth_img.size:
                 z = depth_img[y][x]
-                result = np.array([(x - cx_d) * z * fx_d ,(y - cy_d) * z * fy_d, z ])
+                result = np.array([(x - cx_d) * z / fx_d ,(y - cy_d) * z / fy_d, z ])
         except: return result
 
         if transform_to_camera_link:
