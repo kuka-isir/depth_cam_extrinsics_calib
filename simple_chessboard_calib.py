@@ -76,8 +76,9 @@ def pair(x):
     if x%2==0: return 1
     else: return 0
 
-class KinectChessboardCalibrationExtrinsics:
+class KinectChessboardCalibrationExtrinsics(Thread):
     def __init__(self,kinect_name,base_frame,chess_width,chess_height,square_size,upper_left_corner_position):
+        Thread.__init__(self)
         if kinect_name[-1] == '/':
             kinect_name = kinect_name[:-1]
         self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True)
@@ -138,7 +139,7 @@ class KinectChessboardCalibrationExtrinsics:
         self.lock_.acquire()
         A = np.matrix(self.A)
         B = np.matrix(self.B)
-        self.lock_.release()
+        
 
         ret_R, ret_t = rigid_transform_3D(A, B)
 
@@ -186,6 +187,7 @@ class KinectChessboardCalibrationExtrinsics:
         +' '.join(map(str, translation))+' '+' '.join(map(str, quaternion))+' '+self.kinect.link_frame+' '+self.base_frame+' 100" />'
         print self.static_transform
         print ""
+        self.lock_.release()
 
 
     def get_prepared_pointcloud(self,pts,frame):
@@ -352,7 +354,6 @@ class KinectChessboardCalibrationExtrinsics:
         
         print 'Starting calibration'
 
-
         while not rospy.is_shutdown():
             #self.kinect.lock()
             rgb = np.array(self.kinect.get_rgb(blocking=False))
@@ -378,10 +379,16 @@ class KinectChessboardCalibrationExtrinsics:
                     find_chess_th.join()
                     cv2.waitKey(3)
                 except: pass
-
-            time.sleep(1.0/30.0)
+            #time.sleep(1.0/30.0)
+        self.save_calib()
 
 def main(argv):
+    rospy.init_node("simple_kinect_extrinsics_calibration")
+    if rospy.has_param("/use_sim_time"):
+        rospy.logwarn("Using simulation time")
+        while not rospy.Time.now():
+            pass # tim syncing
+
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=textwrap.dedent(""" Simple Chessboard extrinsics calibration with kinect"""),
                                      epilog='Maintainer: Antoine Hoarau <hoarau.robotics AT gmail DOT com>')
@@ -399,7 +406,7 @@ def main(argv):
                                                   args.square_size,
                                                   args.upper_left_corner_position)
     calib.start()
-    calib.save_calib()
+    rospy.spin()
 
 if __name__ == '__main__':
     main(sys.argv)

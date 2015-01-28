@@ -15,11 +15,24 @@ from threading import Event
 from sensor_msgs.msg import CameraInfo
 import os 
 import cv2
+#from camera_info_manager import *
 
 class Kinect:
-    def __init__(self,camera_name='/camera',queue_size=1,compression=True,use_rect=False):
+    def __init__(self,camera_name='/camera',queue_size=1,compression=True,use_rect=True):
+        if not camera_name[0]=="/":
+            camera_name = "/"+camera_name
         self.camera_name = camera_name
-        
+        # tests with camera_info manager
+        #file_url = ''
+        #try : 
+        #    file_url = rospy.get_param(camera_name+'/driver/depth_camera_info_url')
+        #except : pass
+        #depth_info = CameraInfoManager(cname=camera_name[1:],url=file_url)#,url="file://${ROS_HOME}/camera_info/${NAME}.yaml")
+        #depth_info.loadCameraInfo()
+        #rgb_info = CameraInfoManager.__init__(self,"rgb_"+camera_name)
+        #print "Camera:",depth_info.getCameraName()
+        #print "URL:",depth_info.getURL()
+        #print "Calib:",depth_info.getCameraInfo()
         ## Should be use rectified images ?
         if use_rect:
             rect="_rect"
@@ -55,7 +68,10 @@ class Kinect:
     def get_camera_info(self,camera_name,img_name='depth'):
         import yaml
         camera_info = CameraInfo()
-        file_url = rospy.get_param(camera_name+'/driver/'+img_name+'_camera_info_url').replace('file://','')
+        file_url = ''
+        try : 
+            file_url = rospy.get_param(camera_name+'/driver/'+img_name+'_camera_info_url').replace('file://','')
+        except Exception,e: print e
         if not os.path.exists(file_url):
             if img_name == 'depth':
                 camera_info.K = np.array([610.183545355666, 0, 331.498179304952, 0, 610.613748569717, 257.128224589741, 0, 0, 1])
