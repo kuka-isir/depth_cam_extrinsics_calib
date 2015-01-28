@@ -383,7 +383,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         self.save_calib()
 
 def main(argv):
-    rospy.init_node("simple_kinect_extrinsics_calibration")
+    rospy.init_node("simple_kinect_extrinsics_calibration",anonymous=True)
     if rospy.has_param("/use_sim_time"):
         rospy.logwarn("Using simulation time")
         while not rospy.Time.now():
