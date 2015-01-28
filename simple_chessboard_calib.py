@@ -16,9 +16,42 @@ from geometry_msgs.msg import PointStamped
 import numpy as np
 from threading import Lock
 from tf.transformations import quaternion_from_matrix
-import tf
 from threading import Thread
 from sensor_msgs.msg import PointCloud
+import sys
+
+def query_yes_no(question, default="yes"):
+    """Ask a yes/no question via raw_input() and return their answer.
+
+    "question" is a string that is presented to the user.
+    "default" is the presumed answer if the user just hits <Enter>.
+        It must be "yes" (the default), "no" or None (meaning
+        an answer is required of the user).
+
+    The "answer" return value is True for "yes" or False for "no".
+    """
+    valid = {"yes": True, "y": True, "ye": True,
+             "no": False, "n": False}
+    if default is None:
+        prompt = " [y/n] "
+    elif default == "yes":
+        prompt = " [Y/n] "
+    elif default == "no":
+        prompt = " [y/N] "
+    else:
+        raise ValueError("invalid default answer: '%s'" % default)
+
+    while True:
+        sys.stdout.write(question + prompt)
+        choice = raw_input().lower()
+        if default is not None and choice == '':
+            return valid[default]
+        elif choice in valid:
+            return valid[choice]
+        else:
+            sys.stdout.write("Please respond with 'yes' or 'no' "
+                             "(or 'y' or 'n').\n")
+
 
 def rigid_transform_3D(A, B):
     assert len(A) == len(B)
@@ -43,11 +76,12 @@ def pair(x):
     if x%2==0: return 1
     else: return 0
 
-class KinectChessboardCalibrationExtrinsics:
+class KinectChessboardCalibrationExtrinsics(Thread):
     def __init__(self,kinect_name,base_frame,chess_width,chess_height,square_size,upper_left_corner_position):
+        Thread.__init__(self)
         if kinect_name[-1] == '/':
             kinect_name = kinect_name[:-1]
-        self.kinect = Kinect(kinect_name,queue_size=10,compression=True)
+        self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True)
         self.kinect_name = kinect_name
         self.base_frame = base_frame
         self.transform_name = 'calib_'+self.kinect_name[1:]
@@ -70,12 +104,16 @@ class KinectChessboardCalibrationExtrinsics:
         self.pt2d=[]
         self.pt2d_fit=[]
         self.lock_=Lock()
-        self.init_tf_broadcaster()
         self.final_draw2d_th=Thread()
-
-    def init_tf_broadcaster(self):
-        rospy.loginfo("Initializing the Tf broadcaster")
+        
+        self.rvec = np.zeros((3,1),np.float32)
+        self.tvec = np.zeros((3,1),np.float32)
+        
+        self.useExtrinsicGuess = False
+        # Output tf threads
         self.tf_thread = TfBroadcasterThread(self.kinect.link_frame,self.base_frame)
+        self.tfcv_thread = TfBroadcasterThread(self.base_frame+'_cv',self.kinect.rgb_optical_frame)
+        
 
     def mouse_callback(self,event,x,y,flags,param):
         if event == cv2.EVENT_LBUTTONUP:
@@ -101,7 +139,7 @@ class KinectChessboardCalibrationExtrinsics:
         self.lock_.acquire()
         A = np.matrix(self.A)
         B = np.matrix(self.B)
-        self.lock_.release()
+        
 
         ret_R, ret_t = rigid_transform_3D(A, B)
 
@@ -149,6 +187,7 @@ class KinectChessboardCalibrationExtrinsics:
         +' '.join(map(str, translation))+' '+' '.join(map(str, quaternion))+' '+self.kinect.link_frame+' '+self.base_frame+' 100" />'
         print self.static_transform
         print ""
+        self.lock_.release()
 
 
     def get_prepared_pointcloud(self,pts,frame):
@@ -175,7 +214,17 @@ class KinectChessboardCalibrationExtrinsics:
         s = self.ch_sq
         chess_width = self.ch_w
         chess_height= self.ch_h
-
+        try:
+            xline = (offset[0],offset[1]-1)
+            yline = (offset[0]-1,offset[1])
+            xline_end=(int(offset[0]+chess_height*s*scale),int(offset[1])-1)
+            yline_end=(int(offset[0])-1,int(offset[1]+chess_width*s*scale))
+            #print "OFFSETS : ",offset,xline,yline
+            cv2.line(img,xline,xline_end,(0,255,0),2)
+            cv2.line(img,yline,yline_end,(0,0,255),2)
+            
+        except Exception,e: print e
+        
         for pt in self.chess_pos:
             x = int((pt[0]-self.upper_left_corner_position[0])*scale+offset[0])
             y = int((pt[1]-self.upper_left_corner_position[1])*scale+offset[1])
@@ -218,33 +267,92 @@ class KinectChessboardCalibrationExtrinsics:
                 pos = [x,y,z]
                 chess_pos.append(pos)
         return chess_pos
-    def find_chessboard(self,rgb):
-        #rgb=get_rgb()
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+        
+    def calibration_opencv(self,rgb,h,w,sq_size,use_pnp = True,use_ransac = True):
+        #cameraMatrix = self.kinect.rgb_camera_info.K.reshape(3,3)
+        projMatrix = np.matrix(self.kinect.rgb_camera_info.P).reshape(3,4)
+        cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
+            
+        distCoeffs = np.array(self.kinect.rgb_camera_info.D)
+        
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.1)
         gray = cv2.cvtColor(rgb,cv2.COLOR_BGR2GRAY)
-        objp = np.zeros((6*7,3), np.float32)
-        objp[:,:2] = np.mgrid[0:7,0:6].T.reshape(-1,2)
+        
+        objp = np.zeros((h*w,3), np.float32)
+        objp[:,:2] = np.mgrid[0:h,0:w].T.reshape(-1,2)
+        objp = objp*sq_size
+        objp[:,[0, 1]] = objp[:,[1, 0]]
+        
         objpoints = [] # 3d point in real world space
         imgpoints = [] # 2d points in image plane.
         # Find the chess board corners
-        ret, corners = cv2.findChessboardCorners(gray, (self.ch_h-1,self.ch_w-1),None)
+        ret, corners = cv2.findChessboardCorners(gray, (h,w),None)
 
         # If found, add object points, image points (after refining them)
         if ret == True:
             objpoints.append(objp)
 
-            cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
+            cv2.cornerSubPix(gray,corners,(5,5),(-1,-1),criteria)
             imgpoints.append(corners)
-
+            
             # Draw and display the corners
-            cv2.drawChessboardCorners(rgb, (self.ch_h-1,self.ch_w-1), corners,ret)
-            cv2.imshow('findChessboardCorners - OpenCV',rgb)
+            cv2.drawChessboardCorners(rgb, (h,w), corners,ret)
 
+            if use_pnp:
+                if use_ransac:
+                    if not self.useExtrinsicGuess:
+                        rvec,tvec,_ = cv2.solvePnPRansac(objp, corners,cameraMatrix ,distCoeffs)
+                        self.rvec = rvec
+                        self.tvec = tvec
+                        self.useExtrinsicGuess = True
+                    else:
+                        r,t,_ = cv2.solvePnPRansac(objp, corners,cameraMatrix ,distCoeffs,self.rvec, self.tvec, self.useExtrinsicGuess)
+                        rvec = self.rvec
+                        tvec = self.tvec
+
+                cv2.imshow('findChessboardCorners - OpenCV',rgb)
+            else:
+                ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],cameraMatrix,None,flags=cv2.CALIB_USE_INTRINSIC_GUESS)#flags=cv2.CALIB_FIX_ASPECT_RATIO)
+                rvec = rvecs[0]
+                tvec = tvecs[0]
+                
+            tvect = np.matrix(tvec).reshape(3,1)
+            imgpoints2, _ = cv2.projectPoints(objp, rvec, tvec, cameraMatrix, distCoeffs)
+            
+            for p in imgpoints2:
+                cv2.circle(rgb,(int(p[0][0]),int(p[0][1])),2,(0,12,235),1)
+                
+            cv2.imshow('findChessboardCorners - OpenCV',rgb)
+            ret_R,_ = cv2.Rodrigues(rvec)
+            
+            #print tvec,rvec
+            # Inverse the transformation
+            #ret_Rt = np.matrix(ret_R).T
+            ret_Rt = np.matrix(ret_R)
+            
+            tmp = np.append(ret_Rt, np.array([0,0,0]).reshape(3,1), axis=1)
+            aug=np.array([[0.0,0.0,0.0,1.0]])
+            T = np.append(tmp,aug,axis=0)
+
+            quaternion = quaternion_from_matrix(T)
+            #self.tfcv_thread.set_transformation(-ret_Rt*tvect,quaternion) 
+            self.tfcv_thread.set_transformation(tvect,quaternion)
+            return True
+        return False
+
+    def save_calib(self):
+        time.sleep(1.0)
+        if query_yes_no("Would you like to save the calibration ?"):
+            import yaml
+            #yaml.load
+            rospy.loginfo("Saving file at ")
+            
     def start(self):
         self.current_pos = 0
         self.tf_thread.start()
+        self.tfcv_thread.start()
+        
         print 'Starting calibration'
-
 
         while not rospy.is_shutdown():
             #self.kinect.lock()
@@ -253,8 +361,8 @@ class KinectChessboardCalibrationExtrinsics:
 
             if rgb.size:
                 try:
-                    #find_chess_th = Thread(target=self.find_chessboard,args=(np.array(rgb),))
-                    #find_chess_th.start()
+                    find_chess_th = Thread(target=self.calibration_opencv,args=(np.array(rgb),self.ch_h-1,self.ch_w-1,self.ch_sq))
+                    find_chess_th.start()
 
                     cv2.putText(rgb,"Click on white square n"+str(self.current_pos+1)+"/"+str(self.n_white+1), (50,120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (250,250,255))
                     self.draw_chessboard(rgb,self.current_pos)
@@ -266,14 +374,21 @@ class KinectChessboardCalibrationExtrinsics:
                         cv2.circle(rgb,(int(p[0]),int(p[1])),1,(235,12,25),1)
                     #self.kinect.show_rgb()
                     cv2.imshow(self.kinect.get_rgb_window_name(), rgb)
-                    self.kinect.register_mouse_callback_runtime()
+                    self.kinect.show_depth()
+                    self.kinect.register_mouse_callback_runtime()# should be after imshow to get the mouse cb on the window
+                    find_chess_th.join()
                     cv2.waitKey(3)
                 except: pass
-
-            time.sleep(1.0/30.0)
-
+            #time.sleep(1.0/30.0)
+        self.save_calib()
 
 def main(argv):
+    rospy.init_node("simple_kinect_extrinsics_calibration")
+    if rospy.has_param("/use_sim_time"):
+        rospy.logwarn("Using simulation time")
+        while not rospy.Time.now():
+            pass # tim syncing
+
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=textwrap.dedent(""" Simple Chessboard extrinsics calibration with kinect"""),
                                      epilog='Maintainer: Antoine Hoarau <hoarau.robotics AT gmail DOT com>')
@@ -291,6 +406,7 @@ def main(argv):
                                                   args.square_size,
                                                   args.upper_left_corner_position)
     calib.start()
+    rospy.spin()
 
 if __name__ == '__main__':
     main(sys.argv)

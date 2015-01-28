@@ -35,7 +35,9 @@ class ROSImageSubscriber(Thread):
     def __init__(self,topics,queue_size=10,use_compression=True,loop_rate = 1.0):
         Thread.__init__(self)
         self.node_name = 'img_subscriber'
-        rospy.init_node(self.node_name, anonymous=True)
+        try:
+            rospy.init_node(self.node_name, anonymous=True)
+        except: pass
         self.caller_id = rospy.get_name()
         self.caller_id  = self.caller_id[len(self.node_name)+1:]
         if not isinstance(topics, list):
@@ -46,7 +48,7 @@ class ROSImageSubscriber(Thread):
         if(use_compression):
             self.start_compression_threads()
 
-        print self,' subscribing to : ',self.topics
+        print(str(self)+' subscribing to : '+str(self.topics))
         self.mutex = [Lock()]*len(topics)
         
         self.has_received_first = [False]*len(topics)

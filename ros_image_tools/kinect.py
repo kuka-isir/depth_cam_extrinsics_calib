@@ -13,17 +13,38 @@ import tf
 import rospy
 from threading import Event
 from sensor_msgs.msg import CameraInfo
+import os 
+import cv2
+#from camera_info_manager import *
 
 class Kinect:
-    def __init__(self,camera_name='/camera',queue_size=1,compression=True,use_rect=False):
+    def __init__(self,camera_name='/camera',queue_size=1,compression=True,use_rect=True):
+        if not camera_name[0]=="/":
+            camera_name = "/"+camera_name
         self.camera_name = camera_name
+        # tests with camera_info manager
+        #file_url = ''
+        #try : 
+        #    file_url = rospy.get_param(camera_name+'/driver/depth_camera_info_url')
+        #except : pass
+        #depth_info = CameraInfoManager(cname=camera_name[1:],url=file_url)#,url="file://${ROS_HOME}/camera_info/${NAME}.yaml")
+        #depth_info.loadCameraInfo()
+        #rgb_info = CameraInfoManager.__init__(self,"rgb_"+camera_name)
+        #print "Camera:",depth_info.getCameraName()
+        #print "URL:",depth_info.getURL()
+        #print "Calib:",depth_info.getCameraInfo()
+        ## Should be use rectified images ?
         if use_rect:
             rect="_rect"
         else:
             rect=""
+        
+        ## Topics
         rgb_topic = camera_name+'/rgb/image'+rect+'_color'
         depth_topic = camera_name+'/depth/image'+rect
         depth_registered_topic = camera_name+'/depth_registered/image'+rect
+        
+        ## Frames
         self.depth_optical_frame = camera_name+'_depth_optical_frame'
         self.link_frame = camera_name+'_link'
         self.depth_frame = camera_name+'_depth_frame'
@@ -32,8 +53,6 @@ class Kinect:
 
         self.depth_camera_info=self.get_camera_info(camera_name,'depth')
         self.rgb_camera_info=self.get_camera_info(camera_name,'rgb')
-
-        self.get_camera_info(camera_name)
 
         self.rgb_th = rib.ROSImageSubscriber(rgb_topic,queue_size=queue_size,use_compression=compression)
         self.depth_th = rib.ROSImageSubscriber(depth_topic,queue_size=queue_size,use_compression=compression)
@@ -46,19 +65,35 @@ class Kinect:
         self.cloud_event = Event()
 
 
-
-
     def get_camera_info(self,camera_name,img_name='depth'):
         import yaml
         camera_info = CameraInfo()
-        file_url = rospy.get_param(camera_name+'/driver/'+img_name+'_camera_info_url').replace('file://','')
+        file_url = ''
+        try : 
+            file_url = rospy.get_param(camera_name+'/driver/'+img_name+'_camera_info_url').replace('file://','')
+        except Exception,e: print e
+        if not os.path.exists(file_url):
+            if img_name == 'depth':
+                camera_info.K = np.array([610.183545355666, 0, 331.498179304952, 0, 610.613748569717, 257.128224589741, 0, 0, 1])
+                camera_info.D = np.array([-0.0388664532195436, 0.111397388172138, 0.00673931006062305, 0.00762574500287458, 0])
+                camera_info.P =  np.matrix([613.005981445312, 0, 334.904565660545, 0, 0, 614.685424804688, 259.144825464584, 0, 0, 0, 1, 0])
+            elif img_name == 'rgb':
+                camera_info.K = np.matrix([525.547200081387, 0, 317.00975850542, 0, 526.063977479593, 231.501564568755, 0, 0, 1])
+                camera_info.D = np.array([0.0387333787967748, -0.11681772942717, -0.000993968071341523, 0.007556327027684, 0])
+                camera_info.P =  np.matrix([523.705688476562, 0, 320.996738034948, 0, 0, 527.902526855469, 230.533531720312, 0, 0, 0, 1, 0])
+
+            print( "No camera info found at url ["+file_url+"], using default values")
+            return camera_info
+    
         print 'Loading camera '+img_name+' info at:',file_url
         with open(file_url, 'r') as f:
             calib = yaml.safe_load(f.read())
-            camera_info.K = calib["camera_matrix"]["data"]
-            camera_info.D = calib["distortion_coefficients"]["data"]
-            camera_info.R = calib["rectification_matrix"]["data"]
-            camera_info.P = calib["projection_matrix"]["data"]
+            camera_info.K = np.matrix(calib["camera_matrix"]["data"])
+            camera_info.D = np.array(calib["distortion_coefficients"]["data"])
+            camera_info.R = np.matrix(calib["rectification_matrix"]["data"])
+            camera_info.P = np.matrix(calib["projection_matrix"]["data"])
+            camera_info.height = calib["image_height"]
+            camera_info.width = calib["image_width"]
             print camera_info
         return camera_info
 
@@ -80,6 +115,7 @@ class Kinect:
             return self.depth_registered_th.get_window_name()
         else:
             return self.depth_th.get_window_name()
+            
     def release(self):
         self.release_rgb()
         self.release_depth()
@@ -153,29 +189,35 @@ class Kinect:
             list_pt2d = pmin_all
 
     def world_to_depth(self,pt):
-        if False:#self.depth_camera_info.K:
+        if True:
+            projMatrix = np.matrix(self.rgb_camera_info.P).reshape(3,4)
+            cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
+            #cameraMatrix = np.matrix(self.rgb_camera_info.K).reshape(3,3)
+            distCoeffs = np.matrix(self.rgb_camera_info.D)
+            rvec,_ = cv2.Rodrigues(rotMatrix)
 
+            imgpoints2, _ = cv2.projectPoints(np.array([pt]), rvec, np.zeros(3),cameraMatrix, distCoeffs)
 
-            P = np.matrix(self.depth_camera_info.P).reshape(3,4)
-            pt = np.matrix([pt[0],pt[1],pt[2],1]).T
-            print "P:",P
-            print "pt:",pt
-            result = P*pt
-            print "result:",result
-            return [result[0],result[1]]
+            #P =np.linalg.inv( np.matrix(self.depth_camera_info.P).reshape(3,4)
+            #pt = np.matrix([pt[0],pt[1],pt[2],1]).T
+            result = imgpoints2[0][0]
+            #print "P:",P
+            #print "pt:",pt
+            #result = P*pt
+            #print "result:",result
+            return result
 
         else:
             pt = np.matrix(pt).T
-            if self.depth_camera_info.K:
-                fx_d = self.depth_camera_info.K[0]
-                fy_d = self.depth_camera_info.K[4]
-                cx_d = self.depth_camera_info.K[2]
-                cy_d = self.depth_camera_info.K[5]
-            else:
-                fx_d = 5.9421434211923247e+02;
-                fy_d = 5.9104053696870778e+02;
-                cx_d = 3.3930780975300314e+02;
-                cy_d = 2.4273913761751615e+02;
+            fx_d = self.depth_camera_info.K[0]
+            fy_d = self.depth_camera_info.K[4]
+            cx_d = self.depth_camera_info.K[2]
+            cy_d = self.depth_camera_info.K[5]
+            #else:
+             #   fx_d = 5.9421434211923247e+02;
+              #  fy_d = 5.9104053696870778e+02;
+               # cx_d = 3.3930780975300314e+02;
+                #cy_d = 2.4273913761751615e+02;
 
             #transformedPos = invR*pt + invT
             invZ = 1.0 / pt[2]
@@ -183,28 +225,26 @@ class Kinect:
             raw_x =(pt[0] * fx_d * invZ) + cx_d
             raw_y = (pt[1] * fy_d * invZ) + cy_d
             #print "xr,yr:",raw_x,raw_y
-            res_x = max(0,min(int(raw_x), 639))
-            res_y = max(0,min(int(raw_y), 479))
+            res_x = max(0,min(int(raw_x), self.depth_camera_info.width))
+            res_y = max(0,min(int(raw_y), self.depth_camera_info.height))
             result=[res_x,res_y]
             return result
+    
+    def color_to_world(self,x,y):
+         fx_rgb = self.rgb_camera_info.K[0]
+         fy_rgb = self.rgb_camera_info.K[4]
+         cx_rgb = self.rgb_camera_info.K[2]
+         cy_rgb = self.rgb_camera_info.K[5]
 
-#==============================================================================
-#     def color_to_world(self,x,y):
-#         fx_rgb = 5.2921508098293293e+02
-#         fy_rgb = 5.2556393630057437e+02
-#         cx_rgb = 3.2894272028759258e+02
-#         cy_rgb = 2.6748068171871557e+02
-#
-#         v = self.depth_to_world(x, y)
-#         v[0] = (v[0]/9.9984628826577793e-01) - 1.9985242312092553e-02
-#         v[1] = (v[1]/9.9984628826577793e-01)
-#         v[2] = (v[2]/9.9984628826577793e-01) - 1.9985242312092553e-02
-#         result = [np.nan]*3
-#         result[0] = (v[0]*fx_rgb/v[2])+cx_rgb;
-#         result[1] = (v[1]*fy_rgb/v[2])+cy_rgb;
-#         result[2] = v[2];
-#==============================================================================
-        return result;
+         v = self.depth_to_world(x, y)
+         v[0] = (v[0]/9.9984628826577793e-01) - 1.9985242312092553e-02
+         v[1] = (v[1]/9.9984628826577793e-01)
+         v[2] = (v[2]/9.9984628826577793e-01) - 1.9985242312092553e-02
+         result = [np.nan]*3
+         result[0] = (v[0]*fx_rgb/v[2])+cx_rgb;
+         result[1] = (v[1]*fy_rgb/v[2])+cy_rgb;
+         result[2] = v[2];
+         return result;
 
     def raw_depth_to_meters(self, depth_value):
         # We use depth_registered so useless function
@@ -213,26 +253,21 @@ class Kinect:
         return 0.0
 
     def depth_to_world(self,x,y,depth_img=None,transform_to_camera_link=True):
-
-        if self.depth_camera_info.K:
-            fx_d = 1.0 / self.depth_camera_info.K[0]
-            fy_d = 1.0 / self.depth_camera_info.K[4]
-            cx_d = self.depth_camera_info.K[2]
-            cy_d = self.depth_camera_info.K[5]
-        else:
-            fx_d = 1.0 / 5.9421434211923247e+02;
-            fy_d = 1.0 / 5.9104053696870778e+02;
-            cx_d = 3.3930780975300314e+02;
-            cy_d = 2.4273913761751615e+02;
+        projMatrix = np.matrix(self.rgb_camera_info.P).reshape(3,4)
+        cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
+        #cameraMatrix = self.depth_camera_info.K
+        fx_d = cameraMatrix[0,0]
+        fy_d = cameraMatrix[1,1]
+        cx_d = cameraMatrix[0,2]
+        cy_d = cameraMatrix[1,2]
 
         if depth_img is None:
             depth_img = self.get_depth()
-
         result = [np.nan]*3
         try:
             if depth_img.size:
                 z = depth_img[y][x]
-                result = np.array([(x - cx_d) * z * fx_d ,(y - cy_d) * z * fy_d, z ])
+                result = np.array([(x - cx_d) * z / fx_d ,(y - cy_d) * z / fy_d, z ])
         except: return result
 
         if transform_to_camera_link:
