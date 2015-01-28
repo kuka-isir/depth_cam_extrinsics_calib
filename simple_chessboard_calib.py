@@ -184,7 +184,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         self.world_pt_pub.publish(self.get_prepared_pointcloud(B,self.base_frame))
         print ""
         self.static_transform = '<node pkg="tf" type="static_transform_publisher" name="'+self.transform_name+'" args="'\
-        +' '.join(map(str, translation))+' '+' '.join(map(str, quaternion))+' '+self.kinect.link_frame+' '+self.base_frame+' 100" />'
+        +' '.join(map(str, translation))+' '+' '.join(map(str, quaternion))+' '+self.base_frame+' '+self.kinect.link_frame+' 100" />'
         print self.static_transform
         print ""
         self.lock_.release()
