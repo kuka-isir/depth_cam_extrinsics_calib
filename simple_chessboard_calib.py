@@ -380,7 +380,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
                     cv2.waitKey(3)
                 except: pass
             #time.sleep(1.0/30.0)
-        self.save_calib()
+        #self.save_calib()
 
 def main(argv):
     rospy.init_node("simple_kinect_extrinsics_calibration",anonymous=True)
@@ -398,7 +398,8 @@ def main(argv):
     parser.add_argument('chess_height', type=int,help='Number of squares in the y direction')
     parser.add_argument('square_size', type=float,help='Size of the squares in m')
     parser.add_argument('upper_left_corner_position', type=float,nargs=3,help='Position of the upper right corner to (0,0,0)')
-    args = parser.parse_args()
+    args,_ = parser.parse_known_args()
+    print args
     calib = KinectChessboardCalibrationExtrinsics(args.kinect_name,
                                                   args.base_frame,
                                                   args.chess_width,
