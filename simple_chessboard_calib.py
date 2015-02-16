@@ -18,7 +18,6 @@ from threading import Lock
 from tf.transformations import quaternion_from_matrix
 from threading import Thread
 from sensor_msgs.msg import PointCloud
-import sys
 
 def query_yes_no(question, default="yes"):
     """Ask a yes/no question via raw_input() and return their answer.
@@ -88,6 +87,8 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         self.kinect.wait_until_ready()
         self.kinect.register_mouse_callbacks(self.mouse_callback)
         self.upper_left_corner_position = upper_left_corner_position
+        
+        self.whites_raw = self.compute_whites_pos_raw(chess_width,chess_height)
         self.chess_pos= self.compute_chess_pos_world(chess_width,chess_height,square_size,upper_left_corner_position)
 
         self.depth_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_depth',PointCloud)
@@ -214,14 +215,15 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         s = self.ch_sq
         chess_width = self.ch_w
         chess_height= self.ch_h
+        line_width = 2
         try:
-            xline = (offset[0],offset[1]-1)
-            yline = (offset[0]-1,offset[1])
-            xline_end=(int(offset[0]+chess_height*s*scale),int(offset[1])-1)
-            yline_end=(int(offset[0])-1,int(offset[1]+chess_width*s*scale))
+            xline = (offset[0],offset[1]-line_width)
+            yline = (offset[0]-line_width,offset[1])
+            xline_end=(int(offset[0]+chess_height*s*scale),int(offset[1])-line_width)
+            yline_end=(int(offset[0])-line_width,int(offset[1]+chess_width*s*scale))
             #print "OFFSETS : ",offset,xline,yline
-            cv2.line(img,xline,xline_end,(0,255,0),2)
-            cv2.line(img,yline,yline_end,(0,0,255),2)
+            cv2.line(img,xline,xline_end,(0,255,0),line_width)
+            cv2.line(img,yline,yline_end,(0,0,255),line_width)
             
         except Exception,e: print e
         
@@ -231,7 +233,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
             pos = (y,x)
             cv2.circle(img,pos,2,(10,200,10),-1)
 
-        for j in xrange(chess_height+(chess_height/2)%2):
+        for j in xrange(chess_height):
             for i in xrange(0,chess_width-j%2,2):# +(chess_width/2)%2,2):
 
 
@@ -246,28 +248,35 @@ class KinectChessboardCalibrationExtrinsics(Thread):
 
                 cv2.rectangle(img,pt1,pt2,(0,0,0),-1)
 
-        for j in xrange(chess_height+(chess_height/2)%2):
-            for i in xrange(0,chess_width-2*pair(j)+(chess_width/2 + pair(j))%2,2):
-                if curr == k:
-                    x = int((i+pair(j))*s*scale+s*scale/2.0 + offset[0])
-                    y = int((j*s*scale+s*scale/2.0) + offset[1])
-                    pos = (y,x)
-                    cv2.circle(img,pos,2,(0,0,255),-1)
-                k=k+1
+        whites = self.compute_whites_pos_raw(chess_width,chess_height)
+        for i in xrange(len(whites)):
+            if curr == k:
+                p = whites[i]
+                p[0] = offset[0] + p[0]*scale*s
+                p[1] = offset[1] + p[1]*scale*s
+                # invert x and y just for vizu
+                cv2.circle(img,(int(p[1]),int(p[0])),2,(0,0,255),-1)
+            k=k+1
 
     def compute_chess_pos_world(self,chess_width,chess_height,square_size,upper_left_corner_position):
-        chess_pos=[]
-        s = square_size
-
-        for j in xrange(chess_height+(chess_height/2)%2):
-            for i in xrange(0,chess_width-2*pair(j)+(chess_width/2 + pair(j))%2,2):
-                x = upper_left_corner_position[0] + (i+pair(j))*s+s/2.0
-                y = upper_left_corner_position[1] + (j*s+s/2.0)
-                z = upper_left_corner_position[2]
-                pos = [x,y,z]
-                chess_pos.append(pos)
-        return chess_pos
+        whites = self.compute_whites_pos_raw(chess_width,chess_height)
+        for i in xrange(len(whites)):
+            p = whites[i]
+            p[0] = upper_left_corner_position[0] + p[0]*square_size
+            p[1] = upper_left_corner_position[1] + p[1]*square_size
+            p[2] = upper_left_corner_position[2] + p[2]*square_size
+        return whites
         
+    def compute_whites_pos_raw(self,chess_width,chess_height):
+        objp=[]        
+        for j in xrange(chess_height):
+            for i in xrange((j+1)%2,chess_width,2):
+                x = i + 0.5
+                y = j + 0.5
+                z = 0
+                objp.append([x,y,z])
+        return objp
+
     def calibration_opencv(self,rgb,h,w,sq_size,use_pnp = True,use_ransac = True):
         #cameraMatrix = self.kinect.rgb_camera_info.K.reshape(3,3)
         projMatrix = np.matrix(self.kinect.rgb_camera_info.P).reshape(3,4)
@@ -374,21 +383,21 @@ class KinectChessboardCalibrationExtrinsics(Thread):
                         cv2.circle(rgb,(int(p[0]),int(p[1])),1,(235,12,25),1)
                     #self.kinect.show_rgb()
                     cv2.imshow(self.kinect.get_rgb_window_name(), rgb)
-                    self.kinect.show_depth()
+                    #self.kinect.show_depth()
                     self.kinect.register_mouse_callback_runtime()# should be after imshow to get the mouse cb on the window
                     find_chess_th.join()
                     cv2.waitKey(3)
                 except: pass
             #time.sleep(1.0/30.0)
-        self.save_calib()
+        #self.save_calib()
 
 def main(argv):
     rospy.init_node("simple_kinect_extrinsics_calibration")
     if rospy.has_param("/use_sim_time"):
         rospy.logwarn("Using simulation time")
         while not rospy.Time.now():
-            pass # tim syncing
-
+            pass # tsim syncing
+    
     parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
                                      description=textwrap.dedent(""" Simple Chessboard extrinsics calibration with kinect"""),
                                      epilog='Maintainer: Antoine Hoarau <hoarau.robotics AT gmail DOT com>')
