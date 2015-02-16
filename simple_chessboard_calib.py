@@ -395,7 +395,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
                     find_chess_th = Thread(target=self.calibration_opencv,args=(np.array(rgb),self.ch_h-1,self.ch_w-1,self.ch_sq))
                     find_chess_th.start()
 
-                    cv2.putText(rgb,"Click on white square n"+str(self.current_pos.get()+1)+"/"+str(self.n_white+1), (50,120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (250,250,255))
+                    cv2.putText(rgb,"Click on white square n"+str(self.current_pos.get()+1)+"/"+str(self.n_white), (50,120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (250,250,255))
                     self.draw_chessboard(rgb,self.current_pos.get())
 
                     for p in self.pt2d:
