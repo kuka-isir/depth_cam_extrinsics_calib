@@ -99,10 +99,10 @@ class Kinect:
             print camera_info
         return camera_info
 
-    def register_mouse_callback_runtime(self):
-        self.rgb_th.register_mouse_callback_runtime()
-        self.depth_th.register_mouse_callback_runtime()
-        self.depth_registered_th.register_mouse_callback_runtime()
+    def mouse_callback_spin_once(self):
+        self.rgb_th.mouse_callback_spin_once()
+        self.depth_th.mouse_callback_spin_once()
+        self.depth_registered_th.mouse_callback_spin_once()
 
     def register_mouse_callbacks(self,function):
         self.rgb_th.register_mouse_callback(function)

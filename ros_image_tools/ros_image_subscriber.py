@@ -32,7 +32,7 @@ class ROSImageSubscriber(Thread):
     '''
     Generic tool for ros images
     '''
-    def __init__(self,topics,queue_size=10,use_compression=True,loop_rate = 1.0):
+    def __init__(self,topics,queue_size=1,use_compression=True,loop_rate = 1.0):
         Thread.__init__(self)
         self.node_name = 'img_subscriber'
         try:
@@ -96,7 +96,7 @@ class ROSImageSubscriber(Thread):
             self.mouse_function[i] = function
             self.should_register_mouse[i] = True
 
-    def register_mouse_callback_runtime(self):
+    def mouse_callback_spin_once(self):
         for i in xrange(len(self.topics)):
             if self.should_register_mouse[i]:
                 window = self.topics[i]+str(i)
@@ -187,7 +187,7 @@ class ROSImageSubscriber(Thread):
                     cv2.imshow(window_name, depth_array)
                 else:
                     cv2.imshow(window_name, image)
-                self.register_mouse_callback_runtime()
+                self.mouse_callback_spin_once()
             except TypeError,e:
                 print e
 
