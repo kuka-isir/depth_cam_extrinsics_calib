@@ -16,7 +16,7 @@ from geometry_msgs.msg import PointStamped
 import numpy as np
 from threading import Lock
 from tf.transformations import quaternion_from_matrix
-from threading import Thread
+from threading import Thread,Event
 from sensor_msgs.msg import PointCloud
 
 def query_yes_no(question, default="yes"):
@@ -82,7 +82,7 @@ class CyclicCounter:
         
     def inc(self,pas=1):
         self.c = self.c + pas
-        if self.c > self.s:
+        if self.c >= self.s:
             self.c = 0
         return self.c
         
@@ -128,8 +128,10 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         self.pt2d=[]
         self.pt2d_fit=[]
         self.lock_=Lock()
+        self.event_ = Event()
+        self.opencv_th = Event()
         self.final_draw2d_th=Thread()
-        
+        self.int_cnt=CyclicCounter(10)
         self.rvec = np.zeros((3,1),np.float32)
         self.tvec = np.zeros((3,1),np.float32)
         
@@ -140,9 +142,17 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         
     
     def mouse_callback(self,event,x,y,flags,param):
+        if self.lock_.locked() or self.event_.is_set():
+            print "locked at ",rospy.Time.now()
+            return
+        
         if event == cv2.EVENT_RBUTTONUP:
+            self.event_.set()
             self.current_pos.dec()
+            self.event_.clear()
+            
         if event == cv2.EVENT_LBUTTONUP:
+            self.event_.set()            
             print '[x,y]=',x,y,
             pt = self.kinect.depth_to_world(x,y)
             if not (True in np.isnan(pt)):
@@ -150,17 +160,21 @@ class KinectChessboardCalibrationExtrinsics(Thread):
 
                 self.pt2d.append([x,y])
 
-                self.lock_.acquire()
+                #self.lock_.acquire()
                 self.A.append(pt) #/camera_link
                 self.B.append(self.chess_pos[self.current_pos.get()]) ## /base_link
-                self.lock_.release()
+                #self.lock_.release()
 
                 self.current_pos.inc()
                 if len(self.A)>4:
+                    #th = Thread(target=self.calibrate3d)
+                    #th.start()
                     self.calibrate3d()
+            self.event_.clear()        
+        
 
     def calibrate3d(self):
-        self.lock_.acquire()
+        #self.lock_.acquire()
         A = np.matrix(self.A)
         B = np.matrix(self.B)
         
@@ -211,7 +225,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         +' '.join(map(str, translation))+' '+' '.join(map(str, quaternion))+' '+self.base_frame+' '+self.kinect.link_frame+' 100" />'
         print self.static_transform
         print ""
-        self.lock_.release()
+        #self.lock_.release()
 
 
     def get_prepared_pointcloud(self,pts,frame):
@@ -233,9 +247,9 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         pt_out.point.z = pt[2]
         return pt_out
 
-    def draw_chessboard(self,img,curr=None,scale=150.0,offset=(20,20),):
+    def draw_chessboard(self,img,curr=None,scale=15.0,offset=(20,20)):
         k = 0
-        s = self.ch_sq
+        s = 1.0#self.ch_sq
         chess_width = self.ch_w
         chess_height= self.ch_h
         line_width = 2
@@ -250,14 +264,15 @@ class KinectChessboardCalibrationExtrinsics(Thread):
             
         except Exception,e: print e
         
-        for pt in self.chess_pos:
-            x = int((pt[0]-self.upper_left_corner_position[0])*scale+offset[0])
-            y = int((pt[1]-self.upper_left_corner_position[1])*scale+offset[1])
-            pos = (y,x)
-            cv2.circle(img,pos,2,(10,200,10),-1)
+        whites = self.compute_whites_pos_raw(chess_width,chess_height)
+        for i in xrange(0,len(whites)):
+            p = whites[i]
+            x = offset[0] + p[0]*scale*s
+            y = offset[1] + p[1]*scale*s
+            cv2.circle(img,(int(y),int(x)),2,(10,200,10),-1)
 
         for j in xrange(chess_height):
-            for i in xrange(0,chess_width-j%2,2):# +(chess_width/2)%2,2):
+            for i in xrange(0,chess_width-j%2,2):
 
 
                 x1 = int((i + j%2)*s*scale) +offset[0]
@@ -271,14 +286,13 @@ class KinectChessboardCalibrationExtrinsics(Thread):
 
                 cv2.rectangle(img,pt1,pt2,(0,0,0),-1)
 
-        whites = self.compute_whites_pos_raw(chess_width,chess_height)
-        for i in xrange(len(whites)):
+        for i in xrange(0,len(whites)):
             if curr == k:
                 p = whites[i]
-                p[0] = offset[0] + p[0]*scale*s
-                p[1] = offset[1] + p[1]*scale*s
+                x = offset[0] + p[0]*scale*s
+                y = offset[1] + p[1]*scale*s
                 # invert x and y just for vizu
-                cv2.circle(img,(int(p[1]),int(p[0])),2,(0,0,255),-1)
+                cv2.circle(img,(int(y),int(x)),2,(0,0,255),-1)
             k=k+1
 
     def compute_chess_pos_world(self,chess_width,chess_height,square_size,upper_left_corner_position):
@@ -301,13 +315,14 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         return objp
 
     def calibration_opencv(self,rgb,h,w,sq_size,use_pnp = True,use_ransac = True):
+        self.opencv_th.set()
         #cameraMatrix = self.kinect.rgb_camera_info.K.reshape(3,3)
         projMatrix = np.matrix(self.kinect.rgb_camera_info.P).reshape(3,4)
         cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
             
         distCoeffs = np.array(self.kinect.rgb_camera_info.D)
         
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.1)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
         gray = cv2.cvtColor(rgb,cv2.COLOR_BGR2GRAY)
         
         objp = np.zeros((h*w,3), np.float32)
@@ -342,7 +357,6 @@ class KinectChessboardCalibrationExtrinsics(Thread):
                         rvec = self.rvec
                         tvec = self.tvec
 
-                cv2.imshow('findChessboardCorners - OpenCV',rgb)
             else:
                 ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1],cameraMatrix,None,flags=cv2.CALIB_USE_INTRINSIC_GUESS)#flags=cv2.CALIB_FIX_ASPECT_RATIO)
                 rvec = rvecs[0]
@@ -358,8 +372,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
             ret_R,_ = cv2.Rodrigues(rvec)
             
             #print tvec,rvec
-            # Inverse the transformation
-            #ret_Rt = np.matrix(ret_R).T
+
             ret_Rt = np.matrix(ret_R)
             
             tmp = np.append(ret_Rt, np.array([0,0,0]).reshape(3,1), axis=1)
@@ -367,10 +380,10 @@ class KinectChessboardCalibrationExtrinsics(Thread):
             T = np.append(tmp,aug,axis=0)
 
             quaternion = quaternion_from_matrix(T)
-            #self.tfcv_thread.set_transformation(-ret_Rt*tvect,quaternion) 
+
             self.tfcv_thread.set_transformation(tvect,quaternion)
-            return True
-        return False
+        self.opencv_th.clear()
+        return 
 
     def save_calib(self):
         time.sleep(1.0)
@@ -389,14 +402,19 @@ class KinectChessboardCalibrationExtrinsics(Thread):
             #self.kinect.lock()
             rgb = np.array(self.kinect.get_rgb(blocking=False))
             #self.kinect.release()
-
+            
             if rgb.size:
                 try:
-                    find_chess_th = Thread(target=self.calibration_opencv,args=(np.array(rgb),self.ch_h-1,self.ch_w-1,self.ch_sq))
-                    find_chess_th.start()
-
-                    cv2.putText(rgb,"Click on white square n"+str(self.current_pos.get()+1)+"/"+str(self.n_white), (50,120), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (250,250,255))
-                    self.draw_chessboard(rgb,self.current_pos.get())
+                    if self.event_.is_set():
+                        self.lock_.acquire()
+                    
+                    if not self.opencv_th.is_set():
+                        find_chess_th = Thread(target=self.calibration_opencv,args=(np.array(rgb),self.ch_h-1,self.ch_w-1,self.ch_sq))
+                        find_chess_th.start()
+                    
+                    cv2.putText(rgb,"Click on white square n"+str(self.current_pos.get()+1)+"/"+str(self.n_white), (2*20+15*self.ch_h,30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (250,250,255))
+                    #cv2.putText(rgb,str(rospy.Time.now()), (150,30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (250,250,255))
+                    self.draw_chessboard(rgb,self.current_pos.get(),scale=15,offset=(20,20))
 
                     for p in self.pt2d:
                         cv2.circle(rgb,(int(p[0]),int(p[1])),4,(0,12,235),1)
@@ -404,13 +422,19 @@ class KinectChessboardCalibrationExtrinsics(Thread):
                     for p in self.pt2d_fit:
                         cv2.circle(rgb,(int(p[0]),int(p[1])),1,(235,12,25),1)
                     #self.kinect.show_rgb()
+                    
                     cv2.imshow(self.kinect.get_rgb_window_name(), rgb)
                     #self.kinect.show_depth()
-                    self.kinect.register_mouse_callback_runtime()# should be after imshow to get the mouse cb on the window
-                    find_chess_th.join()
+                    self.kinect.mouse_callback_spin_once()# should be after imshow to get the mouse cb on the window
+        
+                    #find_chess_th.join()
+                    
                     cv2.waitKey(3)
-                except: pass
-            #time.sleep(1.0/30.0)
+                    
+                    if not self.event_.is_set() and self.lock_.locked():
+                        self.lock_.release()
+                except Exception,e: print e
+            time.sleep(1.0/30.0)
         #self.save_calib()
 
 def main(argv):
