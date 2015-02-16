@@ -11,7 +11,7 @@ import numpy as np
 from geometry_msgs.msg import PointStamped
 import tf
 import rospy
-from threading import Event
+from threading import Event,Thread
 from sensor_msgs.msg import CameraInfo
 import os 
 import cv2
@@ -22,6 +22,7 @@ class Kinect:
         if not camera_name[0]=="/":
             camera_name = "/"+camera_name
         self.camera_name = camera_name
+        rospy.wait_for_service(self.camera_name+'_base_link/get_loggers',timeout=30.0)
         # tests with camera_info manager
         #file_url = ''
         #try : 
@@ -51,6 +52,7 @@ class Kinect:
         self.rgb_frame = camera_name+'_rgb_frame'
         self.rgb_optical_frame = camera_name+'_rgb_optical_frame'
 
+        ## Get Intrinsics
         self.depth_camera_info=self.get_camera_info(camera_name,'depth')
         self.rgb_camera_info=self.get_camera_info(camera_name,'rgb')
 
@@ -282,11 +284,11 @@ class Kinect:
         print ""
         while not self.is_ready() and self.is_alive():
             if not self.rgb_th.has_received_first[0]:
-                print 'Waiting for rgb to be ready'
-            if not self.depth_th.has_received_first[0]:
-                print 'Waiting for depth to be ready'
+                print self.camera_name,' waiting for rgb to be ready'
+            #if not self.depth_th.has_received_first[0]:
+            #    print 'Waiting for depth to be ready'
             if not self.depth_registered_th.has_received_first[0]:
-                print 'Waiting for depth registered to be ready'
+                print self.camera_name,' waiting for depth registered to be ready'
             time.sleep(0.5)
         print 'Kinect ready...receiving images'
         if self.depth_th.has_received_first[0]:
