@@ -137,7 +137,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         
         self.useExtrinsicGuess = False
         # Output tf threads
-        self.tf_thread = TfBroadcasterThread(self.kinect.depth_optical_frame,self.base_frame)
+        self.tf_thread = TfBroadcasterThread(self.kinect.link_frame,self.base_frame)
         self.tfcv_thread = TfBroadcasterThread(self.base_frame+'_cv',self.kinect.rgb_optical_frame)
         
     

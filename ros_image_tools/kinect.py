@@ -250,7 +250,6 @@ class Kinect:
         imgpoints2, _ = cv2.projectPoints(np.array([pt]), rvec, np.zeros(3),cameraMatrix, distCoeffs)
 
         result = imgpoints2[0][0]
-
         return result
 
     
@@ -276,7 +275,7 @@ class Kinect:
             return 1.0 / (depth_value * -0.0030711016 + 3.3309495161)
         return 0.0
 
-    def depth_to_world(self,x,y,depth_img=None,transform_to_camera_link=False):
+    def depth_to_world(self,x,y,depth_img=None,transform_to_camera_link=True):
         projMatrix = np.matrix(self.rgb_camera_info.P).reshape(3,4)
         cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
         #cameraMatrix = self.depth_camera_info.K
