@@ -137,7 +137,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         
         self.useExtrinsicGuess = False
         # Output tf threads
-        self.tf_thread = TfBroadcasterThread(self.kinect.link_frame,self.base_frame)
+        self.tf_thread = TfBroadcasterThread(self.kinect.depth_optical_frame,self.base_frame)
         self.tfcv_thread = TfBroadcasterThread(self.base_frame+'_cv',self.kinect.rgb_optical_frame)
         
     
@@ -322,7 +322,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
             
         distCoeffs = np.array(self.kinect.rgb_camera_info.D)
         
-        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
+        criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.1)
         gray = cv2.cvtColor(rgb,cv2.COLOR_BGR2GRAY)
         
         objp = np.zeros((h*w,3), np.float32)
@@ -368,7 +368,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
             for p in imgpoints2:
                 cv2.circle(rgb,(int(p[0][0]),int(p[0][1])),2,(0,12,235),1)
                 
-            cv2.imshow('findChessboardCorners - OpenCV',rgb)
+            
             ret_R,_ = cv2.Rodrigues(rvec)
             
             #print tvec,rvec
@@ -382,6 +382,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
             quaternion = quaternion_from_matrix(T)
 
             self.tfcv_thread.set_transformation(tvect,quaternion)
+        cv2.imshow('findChessboardCorners - OpenCV',rgb)
         self.opencv_th.clear()
         return 
 
@@ -395,7 +396,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
     def start(self):
         self.tf_thread.start()
         self.tfcv_thread.start()
-        
+                
         print 'Starting calibration'
 
         while not rospy.is_shutdown():
@@ -424,7 +425,9 @@ class KinectChessboardCalibrationExtrinsics(Thread):
                     #self.kinect.show_rgb()
                     
                     cv2.imshow(self.kinect.get_rgb_window_name(), rgb)
-                    #self.kinect.show_depth()
+                    
+                    self.kinect.show_depth()
+                    
                     self.kinect.mouse_callback_spin_once()# should be after imshow to get the mouse cb on the window
         
                     #find_chess_th.join()
