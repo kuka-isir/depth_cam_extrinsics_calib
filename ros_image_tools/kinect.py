@@ -13,16 +13,30 @@ import tf
 import rospy
 from threading import Event,Thread
 from sensor_msgs.msg import CameraInfo
-import os 
 import cv2
 #from camera_info_manager import *
 
+def get_output_list(cmd):
+    import subprocess
+    output = subprocess.check_output(cmd, shell=True,universal_newlines=True).split('\n')
+    if output is '':
+        raise Exception('Output of ['+str(cmd)+'] is empty')
+    return list(filter(None, output))
+    
 class Kinect:
-    def __init__(self,camera_name='/camera',queue_size=1,compression=True,use_rect=True):
+    def __init__(self,camera_name='/camera',queue_size=1,compression=True,use_depth_registered=True,use_rect=True):
+        try:
+            rospy.node_init("depth_sensor",anoymous=True)
+        except: pass
+    
         if not camera_name[0]=="/":
             camera_name = "/"+camera_name
         self.camera_name = camera_name
-        rospy.wait_for_service(self.camera_name+'_base_link/get_loggers',timeout=30.0)
+        # Waiting for service to be available, like the camera calibrator
+        
+        camera_info_service = get_output_list("rosservice list | grep "+camera_name+" | grep set_camera_info")[0]
+        rospy.loginfo(self.camera_name+" waiting for "+camera_info_service)
+        rospy.wait_for_service(camera_info_service,timeout=30.0)
         # tests with camera_info manager
         #file_url = ''
         #try : 
@@ -35,45 +49,65 @@ class Kinect:
         #print "URL:",depth_info.getURL()
         #print "Calib:",depth_info.getCameraInfo()
         ## Should be use rectified images ?
+        self.use_depth_registered = use_depth_registered
+        
+        depth="depth"
+        if use_depth_registered:
+            depth = "depth_registered"
+            
+        rect=""
         if use_rect:
             rect="_rect"
-        else:
-            rect=""
         
+        # Temporary solution for OPENNI2/1 compatibility (it adds sw and hw_registered in the topi names)
+        #For now, topic are listed in alphabetical order, so the shortest is the right one !
         ## Topics
-        rgb_topic = camera_name+'/rgb/image'+rect+'_color'
-        depth_topic = camera_name+'/depth/image'+rect
-        depth_registered_topic = camera_name+'/depth_registered/image'+rect
+        rgb_topic   = get_output_list("rostopic list | grep "+camera_name+" | grep rgb | grep image"+rect)[0]
+        
+        depth_topic = get_output_list("rostopic list | grep "+camera_name+" | grep "+depth+" | grep image"+rect)[0]
+        
+        self.rgb_topic      = rgb_topic
+        
+        self.depth_topic    = depth_topic
+        #depth_registered_topic = camera_name+'/depth_registered/image'+rect
         
         ## Frames
-        self.depth_optical_frame = camera_name+'_depth_optical_frame'
-        self.link_frame = camera_name+'_link'
-        self.depth_frame = camera_name+'_depth_frame'
-        self.rgb_frame = camera_name+'_rgb_frame'
-        self.rgb_optical_frame = camera_name+'_rgb_optical_frame'
+        self.depth_optical_frame    = camera_name+'_depth_optical_frame'
+        
+        self.link_frame             = camera_name+'_link'
+        
+        self.depth_frame            = camera_name+'_depth_frame'
+        
+        self.rgb_frame              = camera_name+'_rgb_frame'
+        
+        self.rgb_optical_frame      = camera_name+'_rgb_optical_frame'
 
         ## Get Intrinsics
         self.depth_camera_info=self.get_camera_info(camera_name,'depth')
+        
         self.rgb_camera_info=self.get_camera_info(camera_name,'rgb')
 
         self.rgb_th = rib.ROSImageSubscriber(rgb_topic,queue_size=queue_size,use_compression=compression)
         self.depth_th = rib.ROSImageSubscriber(depth_topic,queue_size=queue_size,use_compression=compression)
-        self.depth_registered_th = rib.ROSImageSubscriber(depth_registered_topic,queue_size=queue_size,use_compression=compression)
-        self.using_registered = False
+        #self.depth_registered_th = rib.ROSImageSubscriber(depth_registered_topic,queue_size=queue_size,use_compression=compression)
         self.rgb_th.start()
-        self.depth_registered_th.start()
+        #self.depth_registered_th.start()
         self.depth_th.start()
+        
         self.tf = tf.TransformListener()
-        self.cloud_event = Event()
-
-
+        #self.cloud_event = Event()
+    def get_camera_info_url(self,camera_name,img_name='depth'):
+        return rospy.get_param(camera_name+'/driver/'+img_name+'_camera_info_url').replace('file://','')
+        
     def get_camera_info(self,camera_name,img_name='depth'):
         import yaml
+        import os
         camera_info = CameraInfo()
         file_url = ''
         try : 
-            file_url = rospy.get_param(camera_name+'/driver/'+img_name+'_camera_info_url').replace('file://','')
+            file_url = self.get_camera_info_url(camera_name,img_name)
         except Exception,e: print e
+                
         if not os.path.exists(file_url):
             if img_name == 'depth':
                 camera_info.K = np.array([610.183545355666, 0, 331.498179304952, 0, 610.613748569717, 257.128224589741, 0, 0, 1])
@@ -84,7 +118,7 @@ class Kinect:
                 camera_info.D = np.array([0.0387333787967748, -0.11681772942717, -0.000993968071341523, 0.007556327027684, 0])
                 camera_info.P =  np.matrix([523.705688476562, 0, 320.996738034948, 0, 0, 527.902526855469, 230.533531720312, 0, 0, 0, 1, 0])
 
-            print( "No camera info found at url ["+file_url+"], using default values")
+            rospy.logwarn( "No camera info found at url ["+file_url+"], using default values.\n Consider setting the *_info_url")
             return camera_info
     
         print 'Loading camera '+img_name+' info at:',file_url
@@ -102,28 +136,28 @@ class Kinect:
     def mouse_callback_spin_once(self):
         self.rgb_th.mouse_callback_spin_once()
         self.depth_th.mouse_callback_spin_once()
-        self.depth_registered_th.mouse_callback_spin_once()
+        #self.depth_registered_th.mouse_callback_spin_once()
 
     def register_mouse_callbacks(self,function):
         self.rgb_th.register_mouse_callback(function)
         self.depth_th.register_mouse_callback(function)
-        self.depth_registered_th.register_mouse_callback(function)
+        #self.depth_registered_th.register_mouse_callback(function)
 
     def get_rgb_window_name(self):
         return self.rgb_th.get_window_name()
 
     def get_depth_window_name(self):
-        if self.using_registered:
-            return self.depth_registered_th.get_window_name()
-        else:
-            return self.depth_th.get_window_name()
+        #if self.use_depth_registered:
+        #    return self.depth_registered_th.get_window_name()
+        #else:
+        return self.depth_th.get_window_name()
             
     def release(self):
         self.release_rgb()
         self.release_depth()
 
     def locked(self):
-        return self.rgb_th.locked() or self.depth_registered_th.locked() or self.depth_th.locked()
+        return self.rgb_th.locked() or self.depth_th.locked()
 
     def lock(self):
         self.lock_rgb()
@@ -133,19 +167,19 @@ class Kinect:
         self.rgb_th.lock()
 
     def lock_depth(self):
-        if self.using_registered:
-            self.depth_registered_th.lock()
-        else:
-            self.depth_th.lock()
+        #if self.use_depth_registered:
+        #    self.depth_registered_th.lock()
+        #else:
+        self.depth_th.lock()
 
     def release_rgb(self):
         self.rgb_th.release()
 
     def release_depth(self):
-        if self.using_registered:
-            self.depth_registered_th.release()
-        else:
-            self.depth_th.release()
+        #if self.use_depth_registered:
+        #    self.depth_registered_th.release()
+        #else:
+        self.depth_th.release()
 
     def transform_point(self,numpoint,target_frame,source_frame):
         p = PointStamped()
@@ -162,7 +196,23 @@ class Kinect:
             print e
 
         return p_out
+        
+    def rgb_to_camera_link(self,numpoint):
+        p = PointStamped()
+        p.header.frame_id = source_frame
+        p.point.x = numpoint[0]
+        p.point.y = numpoint[1]
+        p.point.z = numpoint[2]
+        p_out = [np.nan]*3
+        try:
+            self.tf.waitForTransform(target_frame,source_frame,rospy.Time(0),rospy.Duration(5.0))
+            geo_out = self.tf.transformPoint(target_frame, p).point
+            p_out = np.array([ geo_out.x,geo_out.y,geo_out.z])
+        except tf.Exception,e:
+            print e
 
+        return p_out
+        
     def get_closest_pt2d(self,pt3d,list_pt2d=None):
         if not isinstance(pt3d,list):
             pt3d = np.asarray(pt3d)
@@ -191,48 +241,20 @@ class Kinect:
             list_pt2d = pmin_all
 
     def world_to_depth(self,pt):
-        if True:
-            projMatrix = np.matrix(self.rgb_camera_info.P).reshape(3,4)
-            cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
-            #cameraMatrix = np.matrix(self.rgb_camera_info.K).reshape(3,3)
-            distCoeffs = np.matrix(self.rgb_camera_info.D)
-            rvec,_ = cv2.Rodrigues(rotMatrix)
+        projMatrix = np.matrix(self.rgb_camera_info.P).reshape(3,4)
+        cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
 
-            imgpoints2, _ = cv2.projectPoints(np.array([pt]), rvec, np.zeros(3),cameraMatrix, distCoeffs)
+        distCoeffs = np.matrix(self.rgb_camera_info.D)
+        rvec,_ = cv2.Rodrigues(rotMatrix)
 
-            #P =np.linalg.inv( np.matrix(self.depth_camera_info.P).reshape(3,4)
-            #pt = np.matrix([pt[0],pt[1],pt[2],1]).T
-            result = imgpoints2[0][0]
-            #print "P:",P
-            #print "pt:",pt
-            #result = P*pt
-            #print "result:",result
-            return result
+        imgpoints2, _ = cv2.projectPoints(np.array([pt]), rvec, np.zeros(3),cameraMatrix, distCoeffs)
 
-        else:
-            pt = np.matrix(pt).T
-            fx_d = self.depth_camera_info.K[0]
-            fy_d = self.depth_camera_info.K[4]
-            cx_d = self.depth_camera_info.K[2]
-            cy_d = self.depth_camera_info.K[5]
-            #else:
-             #   fx_d = 5.9421434211923247e+02;
-              #  fy_d = 5.9104053696870778e+02;
-               # cx_d = 3.3930780975300314e+02;
-                #cy_d = 2.4273913761751615e+02;
+        result = imgpoints2[0][0]
 
-            #transformedPos = invR*pt + invT
-            invZ = 1.0 / pt[2]
+        return result
 
-            raw_x =(pt[0] * fx_d * invZ) + cx_d
-            raw_y = (pt[1] * fy_d * invZ) + cy_d
-            #print "xr,yr:",raw_x,raw_y
-            res_x = max(0,min(int(raw_x), self.depth_camera_info.width))
-            res_y = max(0,min(int(raw_y), self.depth_camera_info.height))
-            result=[res_x,res_y]
-            return result
     
-    def color_to_world(self,x,y):
+    def __color_to_world__(self,x,y):# DEPRECATED
          fx_rgb = self.rgb_camera_info.K[0]
          fy_rgb = self.rgb_camera_info.K[4]
          cx_rgb = self.rgb_camera_info.K[2]
@@ -254,7 +276,7 @@ class Kinect:
             return 1.0 / (depth_value * -0.0030711016 + 3.3309495161)
         return 0.0
 
-    def depth_to_world(self,x,y,depth_img=None,transform_to_camera_link=True):
+    def depth_to_world(self,x,y,depth_img=None,transform_to_camera_link=False):
         projMatrix = np.matrix(self.rgb_camera_info.P).reshape(3,4)
         cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
         #cameraMatrix = self.depth_camera_info.K
@@ -278,62 +300,59 @@ class Kinect:
             return result
 
     def is_ready(self):
-        return self.rgb_th.has_received_first[0] and (self.depth_registered_th.has_received_first[0] or self.depth_th.has_received_first[0])
+        return self.rgb_th.has_received_first[0] and self.depth_th.has_received_first[0] #and (self.depth_registered_th.has_received_first[0] or self.depth_th.has_received_first[0])
 
-    def wait_until_ready(self):
-        print ""
+    def __wait_until_ready(self):
         while not self.is_ready() and self.is_alive():
             if not self.rgb_th.has_received_first[0]:
-                print self.camera_name,' waiting for rgb to be ready'
-            #if not self.depth_th.has_received_first[0]:
-            #    print 'Waiting for depth to be ready'
-            if not self.depth_registered_th.has_received_first[0]:
-                print self.camera_name,' waiting for depth registered to be ready'
-            time.sleep(0.5)
-        print 'Kinect ready...receiving images'
-        if self.depth_th.has_received_first[0]:
-            print '[Using depth]'
-            self.using_registered = False
-        if self.depth_registered_th.has_received_first[0]:
-            print '[Using depth_registered]'
-            self.using_registered = True
+                rospy.loginfo(self.camera_name+' waiting for '+self.rgb_topic+' to be ready')
+            if not self.depth_th.has_received_first[0]:
+                rospy.loginfo(self.camera_name+' waiting for '+self.depth_topic+' to be ready')
+            time.sleep(1.0)
+        rospy.loginfo(self.camera_name+' ready !')
+        
+    def wait_until_ready(self,timeout=5.0):
+        th = Thread(target=self.__wait_until_ready)
+        th.start()
+        th.join(timeout=timeout)
 
     def get_rgb(self,blocking=True):
         return self.rgb_th.get_image(blocking=blocking)
 
     def get_depth(self,blocking=True):
-        if self.using_registered:
-            return self.get_depth_registered(blocking=blocking)
-        else:
-            return self.depth_th.get_image(blocking=blocking)
+        #if self.use_depth_registered:
+            #return self.get_depth_registered(blocking=blocking)
+        #else:
+        return self.depth_th.get_image(blocking=blocking)
 
-    def get_depth_registered(self,blocking=True):
-        return self.depth_registered_th.get_image(blocking=blocking)
+    #def get_depth_registered(self,blocking=True):
+    #    return self.depth_registered_th.get_image(blocking=blocking)
 
     def show_rgb(self):
         self.rgb_th.show()
 
     def show_depth(self):
-        if self.using_registered:
-            self.show_depth_registered()
-        else:
-            if self.depth_th.has_received_first[0]:
-                self._show_depth()
-
-    def show_depth_registered(self):
-        if self.depth_registered_th.has_received_first[0]:
-            self._show_depth_registered()
-
-    def _show_depth(self):
         self.depth_th.show()
+        #if self.use_depth_registered:
+        #    self.show_depth_registered()
+        #else:
+        #    if self.depth_th.has_received_first[0]:
+        #        self._show_depth()
 
-    def _show_depth_registered(self):
-        self.depth_registered_th.show()
+    #def show_depth_registered(self):
+    #    if self.depth_registered_th.has_received_first[0]:
+     #       self._show_depth_registered()
+
+    #def _show_depth(self):
+    #    self.depth_th.show()
+
+    #def _show_depth_registered(self):
+        #self.depth_registered_th.show()
 
     def is_alive(self):
-        return self.rgb_th.is_alive() or self.depth_th.is_alive() or self.depth_registered_th.is_alive()
+        return self.rgb_th.is_alive() or self.depth_th.is_alive()# or self.depth_registered_th.is_alive()
 
     def stop(self):
-        self.depth_registered_th.stop()
+        #self.depth_registered_th.stop()
         self.depth_th.stop()
         self.rgb_th.stop()
