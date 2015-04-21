@@ -98,10 +98,11 @@ class CyclicCounter:
 
 
 class KinectChessboardCalibrationExtrinsics(Thread):
-    def __init__(self,kinect_name,base_frame,chess_width,chess_height,square_size,upper_left_corner_position):
+    def __init__(self,kinect_name,base_frame,chess_width,chess_height,square_size,upper_left_corner_position,output_file=None):
         Thread.__init__(self)
         if kinect_name[-1] == '/':
             kinect_name = kinect_name[:-1]
+        self.output_file_path = output_file
         self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True)
         self.kinect_name = kinect_name
         self.base_frame = base_frame
@@ -386,12 +387,30 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         self.opencv_th.clear()
         return 
 
-    def save_calib(self):
-        time.sleep(1.0)
-        if query_yes_no("Would you like to save the calibration ?"):
-            import yaml
-            #yaml.load
-            rospy.loginfo("Saving file at ")
+    def save_calibration(self):
+        if not self.static_transform or not self.output_file_path:
+            print 'Not saving files'
+            return
+        if query_yes_no("Do you want to save "+str(self.output_file_path)):
+            print "Saving file ",self.output_file_path
+            try:
+                with open(self.output_file_path,'r') as f:
+                    with open(self.output_file_path+'.bak','w') as fbak:
+                        print self.output_file_path,' already exists, creating backup file.'
+                        fbak.write(f.read())
+            except: pass
+            with open(self.output_file_path,'w') as f:
+                print self.static_transform
+                f.write("""
+<launch>
+   """+self.static_transform+
+"""
+</launch>
+""")
+            print "File saved."
+        else:
+            print "Not saving calibration."
+        
             
     def start(self):
         self.tf_thread.start()
@@ -456,6 +475,7 @@ def main(argv):
     parser.add_argument('chess_height', type=int,help='Number of squares in the y direction')
     parser.add_argument('square_size', type=float,help='Size of the squares in m')
     parser.add_argument('upper_left_corner_position', type=float,nargs=3,help='Position of the upper right corner to (0,0,0)')
+    parser.add_argument('-o','--output_file', type=str,help='The output file for the calibration (default none, i.e not saving)',default=None)
     args,_ = parser.parse_known_args()
     print args
     calib = KinectChessboardCalibrationExtrinsics(args.kinect_name,
@@ -463,9 +483,11 @@ def main(argv):
                                                   args.chess_width,
                                                   args.chess_height,
                                                   args.square_size,
-                                                  args.upper_left_corner_position)
+                                                  args.upper_left_corner_position,
+                                                  args.output_file)
     calib.start()
     rospy.spin()
+    calib.save_calibration()
 
 if __name__ == '__main__':
     main(sys.argv)

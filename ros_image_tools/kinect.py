@@ -16,11 +16,21 @@ from sensor_msgs.msg import CameraInfo
 import cv2
 #from camera_info_manager import *
 
-def get_output_list(cmd):
-    import subprocess
-    output = subprocess.check_output(cmd, shell=True,universal_newlines=True).split('\n')
-    if output is '':
-        raise Exception('Output of ['+str(cmd)+'] is empty')
+def get_output_list(cmd,timeout=None):
+    import subprocess,time
+    output  = []
+    start = time.time()
+    while not output:
+        try:
+            output = subprocess.check_output(cmd, shell=True,universal_newlines=True).split('\n')
+        except:
+            if timeout:
+                if time.time() - start > timeout:
+                    break
+                else:
+                    time.sleep(0.1)
+            else:
+                break
     return list(filter(None, output))
     
 class Kinect:
@@ -34,7 +44,7 @@ class Kinect:
         self.camera_name = camera_name
         # Waiting for service to be available, like the camera calibrator
         
-        camera_info_service = get_output_list("rosservice list | grep "+camera_name+" | grep set_camera_info")[0]
+        camera_info_service = get_output_list("rosservice list | grep "+camera_name+" | grep set_camera_info",timeout=30.0)[0]
         rospy.loginfo(self.camera_name+" waiting for "+camera_info_service)
         rospy.wait_for_service(camera_info_service,timeout=30.0)
         # tests with camera_info manager
@@ -62,13 +72,13 @@ class Kinect:
         # Temporary solution for OPENNI2/1 compatibility (it adds sw and hw_registered in the topi names)
         #For now, topic are listed in alphabetical order, so the shortest is the right one !
         ## Topics
-        rgb_topic   = get_output_list("rostopic list | grep "+camera_name+" | grep rgb | grep image"+rect)[0]
+        #####################rgb_topic   = get_output_list("rostopic list | grep "+camera_name+" | grep rgb | grep image"+rect,timeout=5.0)
+
+        #####################depth_topic = get_output_list("rostopic list | grep "+camera_name+" | grep "+depth+" | grep image"+rect,timeout=5.0)
         
-        depth_topic = get_output_list("rostopic list | grep "+camera_name+" | grep "+depth+" | grep image"+rect)[0]
+        self.rgb_topic      = camera_name+'/rgb/image'+rect+'_color' #rgb_topic[0]
         
-        self.rgb_topic      = rgb_topic
-        
-        self.depth_topic    = depth_topic
+        self.depth_topic    = camera_name+'/'+depth+'/image'+rect #depth_topic[0]
         #depth_registered_topic = camera_name+'/depth_registered/image'+rect
         
         ## Frames
@@ -87,8 +97,8 @@ class Kinect:
         
         self.rgb_camera_info=self.get_camera_info(camera_name,'rgb')
 
-        self.rgb_th = rib.ROSImageSubscriber(rgb_topic,queue_size=queue_size,use_compression=compression)
-        self.depth_th = rib.ROSImageSubscriber(depth_topic,queue_size=queue_size,use_compression=compression)
+        self.rgb_th = rib.ROSImageSubscriber(self.rgb_topic,queue_size=queue_size,use_compression=compression)
+        self.depth_th = rib.ROSImageSubscriber(self.depth_topic,queue_size=queue_size,use_compression=compression)
         #self.depth_registered_th = rib.ROSImageSubscriber(depth_registered_topic,queue_size=queue_size,use_compression=compression)
         self.rgb_th.start()
         #self.depth_registered_th.start()
