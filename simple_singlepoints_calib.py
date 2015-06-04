@@ -227,7 +227,7 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
     def start(self):
         
         cv2.namedWindow('Thresholding')
-        cv2.createTrackbar('Threshold','Thresholding',140,255,self.nothing)        
+        cv2.createTrackbar('Threshold','Thresholding',160,255,self.nothing)        
         
         while not rospy.is_shutdown():
 
@@ -238,6 +238,9 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
 
             ir_8u = ir_array*255
             ir_8u = ir_8u.astype(np.uint8)
+                        
+            ir_8u = cv2.GaussianBlur(ir_8u ,(5,5),3)
+            cv2.imshow("Gaussian Blur", ir_8u)            
             
             thresh = cv2.getTrackbarPos('Threshold','Thresholding')
             ret, ir_8u_thresh = cv2.threshold(ir_8u,thresh,255,cv2.THRESH_TOZERO)
