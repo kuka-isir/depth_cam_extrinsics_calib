@@ -1,0 +1,303 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+"""
+Created on Wed Jun 03 15:47:00 2015
+
+@author: Jimmy Da Silva <jimmy.dasilva@isir.upmc.fr>
+"""
+
+from ros_image_tools.kinect import Kinect
+from ros_image_tools.tf_broadcaster import TfBroadcasterThread
+import rospy
+import time
+import cv2
+from math import pi
+import argparse,textwrap,sys
+from geometry_msgs.msg import PointStamped
+import numpy as np
+from threading import Lock
+from tf.transformations import quaternion_from_matrix
+from threading import Thread,Event
+from sensor_msgs.msg import PointCloud
+
+def query_yes_no(question, default="yes"):
+    """Ask a yes/no question via raw_input() and return their answer.
+
+    "question" is a string that is presented to the user.
+    "default" is the presumed answer if the user just hits <Enter>.
+        It must be "yes" (the default), "no" or None (meaning
+        an answer is required of the user).
+
+    The "answer" return value is True for "yes" or False for "no".
+    """
+    valid = {"yes": True, "y": True, "ye": True,
+             "no": False, "n": False}
+    if default is None:
+        prompt = " [y/n] "
+    elif default == "yes":
+        prompt = " [Y/n] "
+    elif default == "no":
+        prompt = " [y/N] "
+    else:
+        raise ValueError("invalid default answer: '%s'" % default)
+
+    while True:
+        sys.stdout.write(question + prompt)
+        choice = raw_input().lower()
+        if default is not None and choice == '':
+            return valid[default]
+        elif choice in valid:
+            return valid[choice]
+        else:
+            sys.stdout.write("Please respond with 'yes' or 'no' "
+                             "(or 'y' or 'n').\n")
+
+
+def rigid_transform_3D(A, B):
+    assert len(A) == len(B)
+    N = A.shape[0]; # total points
+    centroid_A = np.mean(A, axis=0)
+    centroid_B = np.mean(B, axis=0)
+    # centre the points
+    AA = A - np.tile(centroid_A, (N, 1))
+    BB = B - np.tile(centroid_B, (N, 1))
+    # dot is matrix multiplication for array
+    H = np.transpose(AA) * BB
+    U, S, Vt = np.linalg.svd(H)
+    R = Vt.T * U.T
+    # special reflection case
+    if np.linalg.det(R) < 0:
+        Vt[2,:] *= -1
+        R = Vt.T * U.T
+    t = -R*centroid_A.T + centroid_B.T
+    return R, t
+
+def pair(x):
+    if x%2==0: return 1
+    else: return 0
+
+class CyclicCounter:
+    def __init__(self,size):
+        self.s = size
+        self.c = 0
+        
+    def inc(self,pas=1):
+        self.c = self.c + pas
+        if self.c >= self.s:
+            self.c = 0
+        return self.c
+        
+    def dec(self,pas=1):
+        self.c = self.c - pas
+        if self.c < 0:
+            self.c = self.s - pas 
+        return self.c
+        
+    def get(self):
+        return self.c
+    
+
+
+class KinectSinglePointsCalibrationExtrinsics(Thread):
+    def __init__(self,kinect_name,base_frame,output_file=None):
+        Thread.__init__(self)
+        if kinect_name[-1] == '/':
+            kinect_name = kinect_name[:-1]
+        self.output_file_path = output_file
+        self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=True)
+        self.kinect_name = kinect_name
+        self.base_frame = base_frame
+        self.transform_name = 'calib_'+self.kinect_name[1:]
+        self.kinect.wait_until_ready()
+        
+        self.depth_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_depth',PointCloud,queue_size=10)
+        self.world_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_calib',PointCloud,queue_size=10)
+
+        self.A=[]
+        self.B=[]         
+        self.pt2d=[]
+        self.pt2d_fit=[]
+        self.single_pt_pos=[]
+        
+        self.tf_thread = TfBroadcasterThread(self.kinect.link_frame,self.base_frame)
+        
+        
+    def calibrate3d(self):
+        #self.lock_.acquire()
+        print self.A
+        A = np.matrix(self.A)
+        B = np.matrix(self.B)
+        
+
+        ret_R, ret_t = rigid_transform_3D(A, B)
+
+        new_col = ret_t.reshape(3, 1)
+        tmp = np.append(ret_R, new_col, axis=1)
+        aug=np.array([[0.0,0.0,0.0,1.0]])
+        translation = np.squeeze(np.asarray(ret_t))
+        T = np.append(tmp,aug,axis=0)
+        quaternion = quaternion_from_matrix(T)
+
+        print "Translation - Rotation"
+        print translation,quaternion
+        # Send the transform to ROS
+        self.tf_thread.set_transformation(ret_t,quaternion)
+
+
+        invR = ret_R.T
+        invT = -invR * ret_t
+
+        ## Compute inverse of transformation
+        B_in_A = np.empty(B.shape)
+        for i in xrange(len(B)):
+            p = invR*B[i].T + invT
+            B_in_A[i] = p.T
+
+        ## Compute the standard deviation
+        err = A-B_in_A
+        std = np.std(err,axis=0)
+        print "Standard deviation : ",std
+
+
+        self.pt2d_fit = []
+        for p_orig2d,p in zip(self.pt2d,B_in_A): #chess dans /camera_link
+            #print "p_orig2d:",p_orig2d
+            pdepth = self.kinect.transform_point(p,self.kinect.depth_optical_frame,self.kinect.link_frame)
+            #print "pdepth:",pdepth
+            pfinal = self.kinect.world_to_depth(pdepth)
+            #print "pfinal:",pfinal
+            self.pt2d_fit.append(pfinal)
+
+        self.depth_pt_pub.publish(self.get_prepared_pointcloud(A,self.kinect.link_frame))
+        self.world_pt_pub.publish(self.get_prepared_pointcloud(B,self.base_frame))
+        print ""
+        self.static_transform = '<node pkg="tf" type="static_transform_publisher" name="'+self.transform_name+'" args="'\
+        +' '.join(map(str, translation))+' '+' '.join(map(str, quaternion))+' '+self.base_frame+' '+self.kinect.link_frame+' 100" />'
+        print self.static_transform
+        print ""
+        #self.lock_.release()
+
+    def get_prepared_pointcloud(self,pts,frame):
+        cloud = PointCloud()
+        cloud.header.frame_id=frame
+        cloud.header.stamp = rospy.Time.now()
+        for p in pts:
+            cloud.points.append(self.get_point_stamped(p,frame).point)
+        return cloud
+
+    def get_point_stamped(self,pt,frame):
+        pt_out = PointStamped()
+        pt_out.header.frame_id=frame
+        pt_out.header.stamp = rospy.Time.now()
+        if type(pt) == np.matrixlib.defmatrix.matrix:
+            pt = pt.tolist()[0]
+        pt_out.point.x = pt[0]
+        pt_out.point.y = pt[1]
+        pt_out.point.z = pt[2]
+        return pt_out       
+
+    def save_calibration(self):
+        if not self.static_transform or not self.output_file_path:
+            print 'Not saving files'
+            return
+        if query_yes_no("Do you want to save "+str(self.output_file_path)):
+            print "Saving file ",self.output_file_path
+            try:
+                with open(self.output_file_path,'r') as f:
+                    with open(self.output_file_path+'.bak','w') as fbak:
+                        print self.output_file_path,' already exists, creating backup file.'
+                        fbak.write(f.read())
+            except: pass
+            with open(self.output_file_path,'w') as f:
+                print self.static_transform
+                f.write("""
+<launch>
+   """+self.static_transform+
+"""
+</launch>
+""")
+            print "File saved."
+        else:
+            print "Not saving calibration."
+            
+                    
+    def nothing(x,c):
+        pass
+            
+    def start(self):
+        
+        cv2.namedWindow('Thresholding')
+        cv2.createTrackbar('Threshold','Thresholding',140,255,self.nothing)        
+        
+        while not rospy.is_shutdown():
+
+            self.kinect.show_ir()
+                        
+            ir_array = np.array(self.kinect.get_ir(blocking=False), dtype=np.float32)
+            cv2.normalize(ir_array, ir_array, 0, 1, cv2.NORM_MINMAX)
+
+            ir_8u = ir_array*255
+            ir_8u = ir_8u.astype(np.uint8)
+            
+            thresh = cv2.getTrackbarPos('Threshold','Thresholding')
+            ret, ir_8u_thresh = cv2.threshold(ir_8u,thresh,255,cv2.THRESH_TOZERO)
+            cv2.imshow("Thresholding", ir_8u_thresh) 
+
+            kernel = np.ones((3,3),np.uint8)
+            opening = cv2.morphologyEx(ir_8u_thresh, cv2.MORPH_OPEN, kernel)            
+            cv2.imshow("Opening", opening) 
+            
+            contours, hierarchy = cv2.findContours(opening,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            
+            if len(contours) == 3:
+                print "detection"
+                for i in range(3):                    
+                    (x,y),radius = cv2.minEnclosingCircle(contours[i])
+                
+                #print '[x,y]=',x,y
+                pt = self.kinect.depth_to_world(x,y)
+                if not (True in np.isnan(pt)):
+                    print ' => [',pt[0],pt[1],pt[2],']'
+    
+                    self.pt2d.append([x,y])
+                    #self.lock_.acquire()
+                    self.A.append(pt) #/camera_link
+                    #self.B.append(self.single_pt_pos) ## /base_link
+                    self.B.append([1,1,1]) ## /base_link
+                    #self.lock_.release()
+    
+                    if len(self.A)>4:
+                        #th = Thread(target=self.calibrate3d)
+                        #th.start()
+                        self.calibrate3d()
+                        
+                    time.sleep(1)
+                
+                print ""
+
+
+def main(argv):
+    rospy.init_node("simple_kinect_extrinsics_calibration",anonymous=True)
+    if rospy.has_param("/use_sim_time"):
+        rospy.logwarn("Using simulation time")
+        while not rospy.Time.now():
+            pass # tsim syncing
+    
+    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
+                                     description=textwrap.dedent(""" Simple points extrinsics calibration with kinect"""),
+                                     epilog='Maintainer: Jimmy Da Silva <jimmy.dasilva AT isir DOT upmc DOT fr>')
+    parser.add_argument('kinect_name', type=str,help='The name of the kinect (ex:/camera)')
+    parser.add_argument('base_frame', type=str,help='Usually /base_link')
+    parser.add_argument('-o','--output_file', type=str,help='The output file for the calibration (default none, i.e not saving)',default=None)
+    args,_ = parser.parse_known_args()
+    print args
+    calib = KinectSinglePointsCalibrationExtrinsics(args.kinect_name,
+                                                  args.base_frame,
+                                                  args.output_file)
+    calib.start()
+    rospy.spin()
+    calib.save_calibration()
+
+if __name__ == '__main__':
+    main(sys.argv)
+    exit(0)
