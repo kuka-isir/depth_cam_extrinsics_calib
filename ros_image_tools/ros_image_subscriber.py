@@ -154,7 +154,12 @@ class ROSImageSubscriber(Thread):
                     self.has_received_first[i] = True
 
                 self.mutex[i].acquire()
-                self.images[i] =  np.array(self.bridge.imgmsg_to_cv(msg[i],enc))
+                try:
+                    self.images[i] =  self.bridge.imgmsg_to_cv2(msg[i],enc)
+                    
+                except Exception,e:
+                    print "Warning, using old cv brdige : ",e
+                    self.images[i] =  np.array(self.bridge.imgmsg_to_cv(msg[i],enc))
                 self.mutex[i].release()
             except CvBridgeError, e:
                 print e
@@ -185,6 +190,12 @@ class ROSImageSubscriber(Thread):
                     # Normalize the depth image to fall between 0 (black) and 1 (white)
                     cv2.normalize(depth_array, depth_array, 0, 1, cv2.NORM_MINMAX)
                     cv2.imshow(window_name, depth_array)
+                isir = window_name.find('/ir') >=0
+                if isir:
+                    ir_array = np.array(image, dtype=np.float32)
+                    # Normalize the depth image to fall between 0 (black) and 1 (white)
+                    cv2.normalize(ir_array, ir_array, 0, 1, cv2.NORM_MINMAX)
+                    cv2.imshow(window_name, ir_array)
                 else:
                     cv2.imshow(window_name, image)
                 self.mouse_callback_spin_once()
