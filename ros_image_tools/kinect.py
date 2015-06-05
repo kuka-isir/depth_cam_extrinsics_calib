@@ -153,14 +153,20 @@ class Kinect:
         return camera_info
 
     def mouse_callback_spin_once(self):
-        self.rgb_th.mouse_callback_spin_once()
-        self.depth_th.mouse_callback_spin_once()
+        self.depth_th.mouse_callback_spin_once()        
         #self.depth_registered_th.mouse_callback_spin_once()
+        if not self.use_ir:
+            self.rgb_th.mouse_callback_spin_once()
+        else:
+            self.rgb_th.mouse_callback_spin_once()        
 
     def register_mouse_callbacks(self,function):
-        self.rgb_th.register_mouse_callback(function)
         self.depth_th.register_mouse_callback(function)
-        #self.depth_registered_th.register_mouse_callback(function)
+        #self.depth_registered_th.register_mouse_callback(function)        
+        if not self.use_ir:
+            self.rgb_th.register_mouse_callback(function)
+        else:
+            self.ir_th.register_mouse_callback(function)              
 
     def get_rgb_window_name(self):
         return self.rgb_th.get_window_name()
@@ -175,16 +181,25 @@ class Kinect:
         return self.depth_th.get_window_name()
             
     def release(self):
-        self.release_rgb()
         self.release_depth()
+        if not self.use_ir:
+            self.release_rgb()
+        else:
+            self.release_ir()
+        
 
     def locked(self):
-        return self.rgb_th.locked() or self.depth_th.locked()
+        if not self.use_ir:            
+            return self.rgb_th.locked() or self.depth_th.locked()
+        else:
+            return self.ir_th.locked() or self.depth_th.locked()
 
     def lock(self):
-        self.lock_rgb()
-        self.lock_depth()
-        self.lock_ir()
+        self.lock_depth()        
+        if not self.use_ir:
+            self.lock_rgb()        
+        else:        
+            self.lock_ir()
 
     def lock_rgb(self):
         self.rgb_th.lock()

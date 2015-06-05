@@ -109,6 +109,7 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         self.base_frame = base_frame
         self.transform_name = 'calib_'+self.kinect_name[1:]
         self.kinect.wait_until_ready()
+        self.kinect.register_mouse_callbacks(self.mouse_callback)
         
         self.depth_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_depth',PointCloud,queue_size=10)
         self.world_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_calib',PointCloud,queue_size=10)
@@ -119,9 +120,23 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         self.pt2d_fit=[]
         self.single_pt_pos=[]
         
+        self.lock_=Lock()
+        self.event_ = Event()
+        self.mouse_clicked = False
+        
         self.tf_thread = TfBroadcasterThread(self.kinect.link_frame,self.base_frame)
         
+    def mouse_callback(self,event,x,y,flags,param):
+        if self.lock_.locked() or self.event_.is_set():
+            print "locked at ",rospy.Time.now()
+            return
         
+        if event == cv2.EVENT_RBUTTONUP:
+            self.event_.set()
+            self.mouse_clicked = True
+            self.event_.clear()
+            
+            
     def calibrate3d(self):
         #self.lock_.acquire()
         print self.A
@@ -227,7 +242,10 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
     def start(self):
         
         cv2.namedWindow('Thresholding')
-        cv2.createTrackbar('Threshold','Thresholding',160,255,self.nothing)        
+        cv2.createTrackbar('Threshold','Thresholding',160,255,self.nothing)
+        cv2.namedWindow('DepthAreaSelection')
+        cv2.createTrackbar('min','DepthAreaSelection',0,255,self.nothing) 
+        cv2.createTrackbar('max','DepthAreaSelection',255,255,self.nothing) 
         
         while not rospy.is_shutdown():
 
@@ -235,12 +253,26 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                         
             ir_array = np.array(self.kinect.get_ir(blocking=False), dtype=np.float32)
             cv2.normalize(ir_array, ir_array, 0, 1, cv2.NORM_MINMAX)
+            depth_array = np.array(self.kinect.get_depth(blocking=False), dtype=np.float32)
+            cv2.normalize(depth_array, depth_array, 0, 1, cv2.NORM_MINMAX)
 
             ir_8u = ir_array*255
             ir_8u = ir_8u.astype(np.uint8)
-                        
+            depth_8u = depth_array*255
+            depth_8u = depth_8u.astype(np.uint8)
+            cv2.imshow("depth", depth_8u)
+            
+            min_dist = cv2.getTrackbarPos('min','DepthAreaSelection')
+            max_dist = cv2.getTrackbarPos('max','DepthAreaSelection')
+            depth_8u_mask = (depth_8u>min_dist)*(depth_8u<max_dist)
+            depth_8u_masked = depth_8u*depth_8u_mask
+            cv2.imshow("DepthAreaSelection", depth_8u_masked)
+            
             ir_8u = cv2.GaussianBlur(ir_8u ,(5,5),3)
-            cv2.imshow("Gaussian Blur", ir_8u)            
+            cv2.imshow("Gaussian Blur", ir_8u)              
+            
+            #ir_8u = ir_8u*depth_8u_mask[:,:,0]
+            #cv2.imshow("Mask applied", ir_8u)                     
             
             thresh = cv2.getTrackbarPos('Threshold','Thresholding')
             ret, ir_8u_thresh = cv2.threshold(ir_8u,thresh,255,cv2.THRESH_TOZERO)
@@ -249,34 +281,35 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
             kernel = np.ones((3,3),np.uint8)
             opening = cv2.morphologyEx(ir_8u_thresh, cv2.MORPH_OPEN, kernel)            
             cv2.imshow("Opening", opening) 
-            
-            contours, hierarchy = cv2.findContours(opening,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-            
-            if len(contours) == 3:
-                print "detection"
-                for i in range(3):                    
-                    (x,y),radius = cv2.minEnclosingCircle(contours[i])
-                
-                #print '[x,y]=',x,y
-                pt = self.kinect.depth_to_world(x,y)
-                if not (True in np.isnan(pt)):
-                    print ' => [',pt[0],pt[1],pt[2],']'
-    
-                    self.pt2d.append([x,y])
-                    #self.lock_.acquire()
-                    self.A.append(pt) #/camera_link
-                    #self.B.append(self.single_pt_pos) ## /base_link
-                    self.B.append([1,1,1]) ## /base_link
-                    #self.lock_.release()
-    
-                    if len(self.A)>4:
-                        #th = Thread(target=self.calibrate3d)
-                        #th.start()
-                        self.calibrate3d()
-                        
-                    time.sleep(1)
-                
-                print ""
+
+            if self.mouse_clicked:
+                self.mouse_clicked = False
+                contours, hierarchy = cv2.findContours(opening,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)            
+                if len(contours) == 3:
+                    print "detection"
+                    for i in range(3):                    
+                        (x,y),radius = cv2.minEnclosingCircle(contours[i])
+                    
+                    #print '[x,y]=',x,y
+                    pt = self.kinect.depth_to_world(x,y)
+                    if not (True in np.isnan(pt)):
+                        print ' => [',pt[0],pt[1],pt[2],']'
+        
+                        self.pt2d.append([x,y])
+                        #self.lock_.acquire()
+                        self.A.append(pt) #/camera_link
+                        #self.B.append(self.single_pt_pos) ## /base_link
+                        self.B.append([1,1,1]) ## /base_link
+                        #self.lock_.release()
+        
+                        if len(self.A)>4:
+                            #th = Thread(target=self.calibrate3d)
+                            #th.start()
+                            self.calibrate3d()
+                            
+                        #time.sleep(0.5)
+                    
+                    print ""
 
 
 def main(argv):
