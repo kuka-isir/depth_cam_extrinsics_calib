@@ -72,32 +72,6 @@ def rigid_transform_3D(A, B):
     t = -R*centroid_A.T + centroid_B.T
     return R, t
 
-def pair(x):
-    if x%2==0: return 1
-    else: return 0
-
-class CyclicCounter:
-    def __init__(self,size):
-        self.s = size
-        self.c = 0
-        
-    def inc(self,pas=1):
-        self.c = self.c + pas
-        if self.c >= self.s:
-            self.c = 0
-        return self.c
-        
-    def dec(self,pas=1):
-        self.c = self.c - pas
-        if self.c < 0:
-            self.c = self.s - pas 
-        return self.c
-        
-    def get(self):
-        return self.c
-    
-
-
 class KinectSinglePointsCalibrationExtrinsics(Thread):
     def __init__(self,kinect_name,base_frame,output_file=None):
         Thread.__init__(self)
@@ -212,29 +186,32 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         return pt_out       
 
     def save_calibration(self):
-        if not self.static_transform or not self.output_file_path:
-            print 'Not saving files'
-            return
-        if query_yes_no("Do you want to save "+str(self.output_file_path)):
-            print "Saving file ",self.output_file_path
-            try:
-                with open(self.output_file_path,'r') as f:
-                    with open(self.output_file_path+'.bak','w') as fbak:
-                        print self.output_file_path,' already exists, creating backup file.'
-                        fbak.write(f.read())
-            except: pass
-            with open(self.output_file_path,'w') as f:
-                print self.static_transform
-                f.write("""
-<launch>
-   """+self.static_transform+
-"""
-</launch>
-""")
-            print "File saved."
-        else:
-            print "Not saving calibration."
-            
+        #TODO
+#==============================================================================
+#         if not self.static_transform or not self.output_file_path:
+#             print 'Not saving files'
+#             return
+#         if query_yes_no("Do you want to save "+str(self.output_file_path)):
+#             print "Saving file ",self.output_file_path
+#             try:
+#                 with open(self.output_file_path,'r') as f:
+#                     with open(self.output_file_path+'.bak','w') as fbak:
+#                         print self.output_file_path,' already exists, creating backup file.'
+#                         fbak.write(f.read())
+#             except: pass
+#             with open(self.output_file_path,'w') as f:
+#                 print self.static_transform
+#                 f.write("""
+# <launch>
+#    """+self.static_transform+
+# """
+# </launch>
+# """)
+#             print "File saved."
+#         else:
+#             print "Not saving calibration."
+#==============================================================================
+        return    
                     
     def nothing(x,c):
         pass
@@ -306,6 +283,7 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                             #th = Thread(target=self.calibrate3d)
                             #th.start()
                             self.calibrate3d()
+                            return
                             
                         #time.sleep(0.5)
                     
@@ -318,18 +296,12 @@ def main(argv):
         rospy.logwarn("Using simulation time")
         while not rospy.Time.now():
             pass # tsim syncing
+       
+    kinect_name = rospy.get_param('~kinect_name')
+    camera_frame = rospy.get_param('~camera_frame')
+    output_file = rospy.get_param('~output_file')
     
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
-                                     description=textwrap.dedent(""" Simple points extrinsics calibration with kinect"""),
-                                     epilog='Maintainer: Jimmy Da Silva <jimmy.dasilva AT isir DOT upmc DOT fr>')
-    parser.add_argument('kinect_name', type=str,help='The name of the kinect (ex:/camera)')
-    parser.add_argument('base_frame', type=str,help='Usually /base_link')
-    parser.add_argument('-o','--output_file', type=str,help='The output file for the calibration (default none, i.e not saving)',default=None)
-    args,_ = parser.parse_known_args()
-    print args
-    calib = KinectSinglePointsCalibrationExtrinsics(args.kinect_name,
-                                                  args.base_frame,
-                                                  args.output_file)
+    calib = KinectSinglePointsCalibrationExtrinsics(kinect_name, camera_frame, output_file)
     calib.start()
     rospy.spin()
     calib.save_calibration()

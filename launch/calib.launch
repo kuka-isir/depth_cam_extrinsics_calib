@@ -1,0 +1,11 @@
+<launch>
+  <arg name="kinect_name" default="camera"/>
+  <arg name="camera_frame" default="/camera_link"/>
+  <arg name="output_file" default=""/>
+
+  <node name="kinect_points_calibration" pkg="kinect_extrinsics_simple" type="simple_singlepoints_calib.py" output="screen">
+    <param name="kinect_name" value="$(arg kinect_name)" />
+    <param name="camera_frame" value="$(arg camera_frame)" />
+    <param name="output_file" value="$(arg output_file)" />
+  </node>
+</launch>
