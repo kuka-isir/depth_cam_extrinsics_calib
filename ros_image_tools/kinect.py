@@ -345,8 +345,10 @@ class Kinect:
         try:
             if depth_img.size:
                 z = (depth_img[y][x])[0]
+                if (z == 0):
+                    return [np.nan]*3
+                print "depth is : "+str(z)                    
                 result = [(x - cx_d) * z / fx_d ,(y - cy_d) * z / fy_d, z ]
-        except: return result
 
         if transform_to_camera_link:
             return self.transform_point(result,self.link_frame,self.depth_optical_frame)
