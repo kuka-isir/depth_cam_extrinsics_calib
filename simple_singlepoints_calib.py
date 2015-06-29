@@ -6,6 +6,7 @@ Created on Wed Jun 03 15:47:00 2015
 @author: Jimmy Da Silva <jimmy.dasilva@isir.upmc.fr>
 """
 
+from ros_image_tools.kinect_v2 import Kinect_v2
 from ros_image_tools.kinect import Kinect
 from ros_image_tools.tf_broadcaster import TfBroadcasterThread
 import rospy
@@ -75,12 +76,17 @@ def rigid_transform_3D(A, B):
     return R, t
 
 class KinectSinglePointsCalibrationExtrinsics(Thread):
-    def __init__(self,kinect_name,base_frame,output_file=None):
+    def __init__(self,kinect_type, kinect_name,base_frame,serial,output_file=None):
         Thread.__init__(self)
         if kinect_name[-1] == '/':
             kinect_name = kinect_name[:-1]
         self.output_file_path = output_file
-        self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=True)
+        
+        if (kinect_type == "Kinect2") or (kinect_type == "Kinectv2") or (kinect_type == "Kinect_v2"):
+            self.kinect = Kinect_v2(kinect_name,serial,queue_size=10,compression=False,use_rect=True,use_ir=True)
+        elif kinect_type == "Kinect":
+            self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=True)
+        
         self.kinect_name = kinect_name
         self.base_frame = base_frame
         self.transform_name = 'calib_'+self.kinect_name[1:]
@@ -388,8 +394,10 @@ def main(argv):
     kinect_name = rospy.get_param('~kinect_name')
     camera_frame = rospy.get_param('~camera_frame')
     output_file = rospy.get_param('~output_file')
+    serial = rospy.get_param('~serial')
+    kinect_type = rospy.get_param('~kinect_type')
     
-    calib = KinectSinglePointsCalibrationExtrinsics(kinect_name, camera_frame, output_file)
+    calib = KinectSinglePointsCalibrationExtrinsics(kinect_type, kinect_name, camera_frame,serial, output_file)
     calib.start()
     rospy.spin()
     calib.save_calibration()
