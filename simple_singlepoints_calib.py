@@ -83,9 +83,14 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         self.output_file_path = output_file
         
         if (kinect_type == "Kinect2") or (kinect_type == "Kinectv2") or (kinect_type == "Kinect_v2"):
+            print "Loading Kinect2 with serial : "+serial 
             self.kinect = Kinect_v2(kinect_name,serial,queue_size=10,compression=False,use_rect=True,use_ir=True)
         elif kinect_type == "Kinect":
+            print "Loading Kinect1 with serial : "+serial
             self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=True)
+        else:
+            print "ERROR: Kinect type must be Kinect2 or Kinect"
+            return       
         
         self.kinect_name = kinect_name
         self.base_frame = base_frame
@@ -391,7 +396,7 @@ def main(argv):
         while not rospy.Time.now():
             pass # tsim syncing
        
-    kinect_name = rospy.get_param('~kinect_name')
+    kinect_name = rospy.get_param('~camera_name')
     camera_frame = rospy.get_param('~camera_frame')
     output_file = rospy.get_param('~output_file')
     serial = rospy.get_param('~serial')
