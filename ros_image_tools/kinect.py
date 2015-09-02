@@ -79,7 +79,11 @@ class Kinect:
         
         self.rgb_topic      = camera_name+'/rgb/image'+rect+'_color' #rgb_topic[0]
         
-        self.depth_topic    = camera_name+'/'+depth+'/hw_registered'+'/image'+rect+"_raw" #depth_topic[0]
+        if use_depth_registered:
+            self.depth_topic    = camera_name+'/'+depth+'/hw_registered'+'/image'+rect+"_raw" #depth_topic[0]    
+        else:
+            self.depth_topic    = camera_name+'/'+depth+'/image'+rect+'_raw' #depth_topic[0]
+        
         #depth_registered_topic = camera_name+'/depth_registered/image'+rect
         if use_rect:
             self.ir_topic    = camera_name+'/ir/image_rect_ir'

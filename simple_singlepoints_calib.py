@@ -12,7 +12,8 @@ from ros_image_tools.tf_broadcaster import TfBroadcasterThread
 import rospy
 import time
 import cv2
-from math import pi
+import tf
+import math
 import argparse,textwrap,sys
 from geometry_msgs.msg import PointStamped
 import numpy as np
@@ -84,10 +85,10 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         
         if (kinect_type == "Kinect2") or (kinect_type == "Kinectv2") or (kinect_type == "Kinect_v2"):
             print "Loading Kinect2 with serial : "+serial 
-            self.kinect = Kinect_v2(kinect_name,serial,queue_size=10,compression=False,use_rect=True,use_ir=True)
+            self.kinect = Kinect_v2(kinect_name,serial,queue_size=10,compression=False,use_rect=False,use_ir=True)
         elif kinect_type == "Kinect":
             print "Loading Kinect1 with serial : "+serial
-            self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=True)
+            self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=False,use_ir=True)
         else:
             print "ERROR: Kinect type must be Kinect2 or Kinect"
             return       
@@ -100,7 +101,7 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         
         self.depth_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_depth',PointCloud,queue_size=10)
         self.world_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_calib',PointCloud,queue_size=10)
-        self.pt_pub = rospy.Publisher(self.kinect_name+'pts_detected',PointStamped,queue_size=10)
+        self.pt_pub = rospy.Publisher(self.kinect_name+'/pts_detected',PointStamped,queue_size=10)
 
         self.A=[]
         self.B=[]         
@@ -242,9 +243,13 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         
         cv2.namedWindow('Thresholding')
         cv2.createTrackbar('Threshold','Thresholding',160,255,self.nothing)
-        cv2.namedWindow('DepthAreaSelection')
-        cv2.createTrackbar('min','DepthAreaSelection',0,255,self.nothing) 
-        cv2.createTrackbar('max','DepthAreaSelection',255,255,self.nothing) 
+#==============Apply mask corresponding to select depth range==================
+#         cv2.namedWindow('DepthAreaSelection')
+#         cv2.createTrackbar('min','DepthAreaSelection',0,255,self.nothing) 
+#         cv2.createTrackbar('max','DepthAreaSelection',255,255,self.nothing) 
+#==============================================================================
+        
+        listener = tf.TransformListener()
         
         while not rospy.is_shutdown():
 
@@ -259,9 +264,9 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
             ir_8u = ir_8u.astype(np.uint8)
             depth_8u = depth_array*255
             depth_8u = depth_8u.astype(np.uint8)
-            cv2.imshow("depth", depth_8u)
+            #cv2.imshow("depth", depth_8u)
             
-#==============================================================================
+#==============Apply mask corresponding to select depth range==================
 #             min_dist = cv2.getTrackbarPos('min','DepthAreaSelection')
 #             max_dist = cv2.getTrackbarPos('max','DepthAreaSelection')
 #             depth_8u_mask = (depth_8u>min_dist)*(depth_8u<max_dist)
@@ -270,10 +275,12 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
 #==============================================================================
             
             ir_8u = cv2.GaussianBlur(ir_8u ,(5,5),3)
-            cv2.imshow("Gaussian Blur", ir_8u)              
+            #cv2.imshow("Gaussian Blur", ir_8u)              
             
-            #ir_8u = ir_8u*depth_8u_mask[:,:,0]
-            #cv2.imshow("Mask applied", ir_8u)                     
+#==============Apply mask corresponding to select depth range==================
+#             ir_8u = ir_8u*depth_8u_mask[:,:,0]
+#             cv2.imshow("Mask applied", ir_8u)                     
+#==============================================================================
             
             thresh = cv2.getTrackbarPos('Threshold','Thresholding')
             ret, ir_8u_thresh = cv2.threshold(ir_8u,thresh,255,cv2.THRESH_BINARY)
@@ -283,103 +290,76 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
             opening = cv2.morphologyEx(ir_8u_thresh, cv2.MORPH_OPEN, kernel)
             cv2.imshow("Opening", opening)                    
          
-            if self.mouse_clicked:
-                self.mouse_clicked = False
+            # If there is the right amount of contours
+            contours, _ = cv2.findContours(opening,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
+            nb_contours = len(contours)                         
+            if nb_contours == 3:
+
+                try:
+                    (trans,rot) = listener.lookupTransform('/world', '/ati_link', rospy.Time(0))
+                except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                    continue              
                 
-                opening_color = cv2.cvtColor(opening ,cv2.COLOR_GRAY2RGB)
-                opening_color *= 255                
-
-                # If there is the right amount of contours
-                contours, _ = cv2.findContours(opening,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
-                nb_contours = len(contours)                         
-                if nb_contours == 2:
-                    pt = []
-                    middle_x = 0
-                    middle_y = 0
-                    for i in range(nb_contours):
-                        img = np.zeros((480,640,1), np.uint8)
+                pt = []
+                middle_x = 0
+                middle_y = 0
+                radiuses = []
+                x_coords = []
+                y_coords = []
+                detection_img = cv2.cvtColor(opening ,cv2.COLOR_GRAY2RGB)
+                for i in range(nb_contours):
+                    (x,y), radius = cv2.minEnclosingCircle(contours[i])
+                    (x,y) = (int(x),int(y))
+                    radius = int(radius)
+                    cv2.circle(detection_img, (x,y), radius, (255,255,255), -1)                
+                    middle_x += x/nb_contours
+                    middle_y += y/nb_contours
+                    radiuses.append(radius)
+                    x_coords.append(x)
+                    y_coords.append(y)
                     
-                        (x,y), radius = cv2.minEnclosingCircle(contours[i])
-                        (x,y) = (int(x),int(y))
-                        radius = int(radius)
+                # Leave if the balls don't seem to have the same size
+                print 'radiuses : ',radiuses
+                if (abs(radiuses[0]-radiuses[1])>2 or abs(radiuses[0]-radiuses[2])>2 or abs(radiuses[2]-radiuses[1])>2):
+                    print 'RADIUSES ARE TOO DIFFERENT'
+                    continue
 
-                        cv2.circle(img, (x,y), radius, 255, -1)
-                        cv2.imshow("DrawContours", img)
-                        cv2.waitKey(10)
-                        middle_x += x/nb_contours
-                        middle_y += y/nb_contours
-                    
-                    middle_x = int(middle_x)
-                    middle_y = int(middle_y)
-                    cv2.circle(opening_color,(middle_x,middle_y),2,(0,255,0),-1)  
+                # Leave if the triangle seems to big                
+                dists = []
+                dists.append(math.sqrt( math.pow(x_coords[0]-middle_x,2) + math.pow(y_coords[0]-middle_y,2) ))
+                dists.append(math.sqrt( math.pow(x_coords[1]-middle_x,2) + math.pow(y_coords[1]-middle_y,2) ))
+                dists.append(math.sqrt( math.pow(x_coords[2]-middle_x,2) + math.pow(y_coords[2]-middle_y,2) ))
+                print 'dists to center: ',dists  
+                if (dists[0]>25 or dists[1]>25 or dists[2]>25):
+                    print 'Balls doesnt seem to define the right triangle'
+                    continue
+                
+                middle_x = int(middle_x)
+                middle_y = int(middle_y)
+                cv2.circle(detection_img,(middle_x,middle_y),2,(0,255,0),-1)
+                cv2.imshow("Detection", detection_img)
+                
+                if self.mouse_clicked:
+                    print 'SAVING FOR CALIBRATION !!!'
+                    self.mouse_clicked = False                
                     
                     pt = self.kinect.depth_to_world(middle_x,middle_y)
                     if not (True in np.isnan(pt)):
                         print ' => [',pt[0],pt[1],pt[2],']'
-                        #pt.append(pt_temp)
                         pt_stamped = PointStamped()
                         pt_stamped.header.frame_id = rospy.get_param('~camera_frame')
                         pt_stamped.point.x = pt[0]/1000
                         pt_stamped.point.y = pt[1]/1000
                         pt_stamped.point.z = pt[2]/1000
                         self.pt_pub.publish(pt_stamped)
+                        
+                        self.A.append(pt)
+                        self.B.append([trans[0],trans[1],trans[2]])
                     
-                    print "detection"                
+                    print "detection"
+                    time.sleep(2.0)
                 
-#==============================================================================
-#                 pt=[]
-#                 for i in range(len(contours)):
-#                     img = np.zeros((480,640,1), np.uint8)
-#                     
-#                     (x,y), radius = cv2.minEnclosingCircle(contours[i])
-#                     (x,y) = (int(x),int(y))
-#                     radius = int(radius)
-# 
-#                     cv2.circle(img, (x,y), radius, 255, -1)
-#                     cv2.imshow("DrawContours", img)
-#                     cv2.waitKey(10)
-#                     
-#                     pt_temp = self.kinect.depth_to_world(x,y)  #Add depth shift because of markers' radius ??
-#                     
-#                     
-#                     cv2.circle(opening_color,(x,y),radius,(0,255,0))  
-#                                         
-#                     if not (True in np.isnan(pt_temp)):
-#                         print ' => [',pt_temp[0],pt_temp[1],pt_temp[2],']'
-#                         pt.append(pt_temp)
-#                         pt_stamped = PointStamped()
-#                         pt_stamped.header.frame_id = "camera_link"
-#                         pt_stamped.point.x = pt_temp[0]/1000
-#                         pt_stamped.point.y = pt_temp[1]/1000
-#                         pt_stamped.point.z = pt_temp[2]/1000
-#                         self.pt_pub.publish(pt_stamped)
-#                     
-#                 cv2.imshow("New opening", opening_color)
-#                 cv2.waitKey(10)
-#                     
-#                 
-#                 print "Mat:"
-#                 print pt
-#                 
-#                 if pt:                        
-#                     dists = scipy_dist.squareform(scipy_dist.pdist(pt))
-#                     print "Dist Mat:"                
-#                     print dists
-#==============================================================================
-                    
-                balls_max_dist = 100
-                
-                    
-#==============================================================================
-#         
-#                     #self.A.append(pt) #/camera_link
-#                     #TODO 
-#                     # Read link position from tf
-#                     #self.B.append([1,1,1]) 
-#                 print "-----TEST----"
-#                 print pt[0]
-#                 print pt[0][0]
-#         
+#=================Run calibration process========================         
 #                 if len(self.A)>4:
 #                     self.calibrate3d()
 #                     return
@@ -387,7 +367,19 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
 #                 print ""
 #                 time.sleep(0.5)                              
 #==============================================================================
-                
+            
+#===============distances between 3d points using scipy================================         
+#                 print "Mat:"
+#                 print pt
+#                 
+#                 if pt:                        
+#                     dists = scipy_dist.squareform(scipy_dist.pdist(pt))
+#                     print "Dist Mat:"                
+#                     print dists            
+#                 print "-----TEST----"
+#                 print pt[0]
+#                 print pt[0][0]
+#==============================================================================                         
 
 def main(argv):
     rospy.init_node("simple_kinect_extrinsics_calibration",anonymous=True)
