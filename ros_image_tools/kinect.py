@@ -336,7 +336,7 @@ class Kinect:
             projMatrix = np.matrix(self.ir_camera_info.P).reshape(3,4)
             
         cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
-        #cameraMatrix = self.depth_camera_info.K
+        cameraMatrix = projMatrix
         fx_d = cameraMatrix[0,0]
         fy_d = cameraMatrix[1,1]
         cx_d = cameraMatrix[0,2]
@@ -351,7 +351,7 @@ class Kinect:
                 z = (depth_img[y][x])[0]
                 if (z == 0):
                     return [np.nan]*3
-                print "depth is : "+str(z)                    
+                              
                 result = [(x - cx_d) * z / fx_d ,(y - cy_d) * z / fy_d, z ]
         except Exception,e: 
             print e
@@ -359,7 +359,7 @@ class Kinect:
         if transform_to_camera_link:
             return self.transform_point(result,self.link_frame,self.depth_optical_frame)
         else:
-            return result
+            return np.array(result)
 
     def is_ready(self):
         if self.use_depth_registered:
