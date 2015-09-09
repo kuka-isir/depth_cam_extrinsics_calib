@@ -288,7 +288,7 @@ class Kinect:
         else:
             list_pt2d = pmin_all
 
-    def world_to_depth(self,pt):
+    def world_to_depth(self,pt,use_distortion=True):
         if not self.use_ir:
             projMatrix = np.matrix(self.rgb_camera_info.P).reshape(3,4)
             distCoeffs = np.matrix(self.rgb_camera_info.D)
@@ -296,11 +296,12 @@ class Kinect:
             projMatrix = np.matrix(self.ir_camera_info.P).reshape(3,4)
             distCoeffs = np.matrix(self.ir_camera_info.D)
             
-        cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
-
+        cameraMatrix, rotMatrix, tvec, _, _, _, _ = cv2.decomposeProjectionMatrix(projMatrix)
         
         rvec,_ = cv2.Rodrigues(rotMatrix)
-
+        
+        if not use_distortion:
+            distCoeffs = np.array([])
         imgpoints2, _ = cv2.projectPoints(np.array([pt]), rvec, np.zeros(3),cameraMatrix, distCoeffs)
 
         result = imgpoints2[0][0]

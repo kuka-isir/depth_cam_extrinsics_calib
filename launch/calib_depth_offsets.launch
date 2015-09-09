@@ -1,0 +1,15 @@
+<launch>
+  <arg name="kinect_type" default="Kinect"/>
+  <arg name="kinect_name" default="kinect3"/>
+  <arg name="base_frame" default="/base_link"/>
+  <arg name="output_file" default="/home/jimmy/Desktop/kinect3_calib.launch"/>
+  <arg name="serial" default="1402240420"/>
+
+  <node name="kinect_points_calibration" pkg="kinect_extrinsics_simple" type="depth_offsets_calib.py" output="screen">
+    <param name="camera_name" value="$(arg kinect_name)" />
+    <param name="base_frame" value="$(arg base_frame)" />
+    <param name="output_file" value="$(arg output_file)" />
+    <param name="serial" value="$(arg serial)" type="str" /> 
+    <param name="kinect_type" value="$(arg kinect_type)" /> 
+  </node>
+</launch>
