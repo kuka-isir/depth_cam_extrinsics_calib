@@ -12,11 +12,9 @@ import rospy
 import time
 import cv2
 import tf
-import math
 import sys
-from geometry_msgs.msg import PointStamped
 import numpy as np
-from threading import Thread,Event,Lock
+from threading import Thread
 from scipy import stats
 
 def query_yes_no(question, default="yes"):
@@ -75,81 +73,44 @@ class KinectDepthOffsetsCalibration(Thread):
 
         self.rgb_values = []
         self.depth_values = []
-        
-        
-        self.lock_= Lock()
-        self.event_ = Event()        
-        
-
-    def get_point_stamped(self,pt,frame):
-        pt_out = PointStamped()
-        pt_out.header.frame_id=frame
-        pt_out.header.stamp = rospy.Time.now()
-        if type(pt) == np.matrixlib.defmatrix.matrix:
-            pt = pt.tolist()[0]
-        pt_out.point.x = pt[0]
-        pt_out.point.y = pt[1]
-        pt_out.point.z = pt[2]
-        return pt_out       
             
     def start(self):
 
-        #try: 
-            listener = tf.TransformListener()
-            # TODO make parameters
-            while not rospy.is_shutdown():
-                try:
-                    (trans,rot) = listener.lookupTransform('/kinect3_rgb_optical_frame', '/ar_marker_0', rospy.Time(0))
-                except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                    continue 
-                
-                
-                (pixel_x, pixel_y) = self.kinect.world_to_depth(trans,use_distortion=False)
-                pixel_x = int(pixel_x)
-                pixel_y = int(pixel_y)
-                self.kinect.show_rgb()
-#==============================================================================
-#                 print (pixel_x, pixel_y)    
-#==============================================================================
-                
-                rgb_img = self.kinect.get_rgb(blocking=False)
-                # rgb_array = np.array(rgb_img, dtype=np.float32)
-                cv2.circle(rgb_img, (pixel_x,pixel_y), 6, (0,0,255), -1)
-                
-                depth_tag_frame = self.kinect.depth_to_world(pixel_x, pixel_y,transform_to_camera_link=False)
+        listener = tf.TransformListener()
+        # TODO make parameters
+        while not rospy.is_shutdown():
+            try:
+                (trans,rot) = listener.lookupTransform('/kinect3_rgb_optical_frame', '/ar_marker_0', rospy.Time(0))
+            except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                continue 
+            
+            (pixel_x, pixel_y) = self.kinect.world_to_depth(trans,use_distortion=False)
+            pixel_x = int(pixel_x)
+            pixel_y = int(pixel_y)
+            self.kinect.show_rgb()
+            
+            rgb_img = self.kinect.get_rgb(blocking=False)
+            cv2.circle(rgb_img, (pixel_x,pixel_y), 6, (0,0,255), -1)
+            depth_tag_frame = self.kinect.depth_to_world(pixel_x, pixel_y,transform_to_camera_link=False)
 
-                if not (True in np.isnan(depth_tag_frame)) and (depth_tag_frame is not None):          
-                    depth_tag_frame = depth_tag_frame/1000                
-    
-#==============================================================================
-#                     print "rgb :",trans
-#                     print "depth :", depth_tag_frame
-#                     
-#==============================================================================
-                    dist_rgb = np.linalg.norm(np.array(trans))
-                    dist_depth = np.linalg.norm(depth_tag_frame)
+            if not (True in np.isnan(depth_tag_frame)) and (depth_tag_frame is not None):          
+                depth_tag_frame = depth_tag_frame/1000                
+
+                dist_rgb = np.linalg.norm(np.array(trans))
+                dist_depth = np.linalg.norm(depth_tag_frame)
+                
+                if dist_rgb>0.5:
+                    self.rgb_values.append(dist_rgb)
+                    self.depth_values.append(dist_depth)
                     
-                    if dist_rgb>0.5:
-                        self.rgb_values.append(dist_rgb)
-                        self.depth_values.append(dist_depth)
+                    slope, intercept, r_value, p_value, std_err = stats.linregress(self.depth_values,self.rgb_values)
+                    print 'slope: ', slope
+                    print 'z0', intercept,'\n'
+                    time.sleep(1.0)
+                    
+                    if len(self.depth_values)>15:
+                        return
                         
-                        slope, intercept, r_value, p_value, std_err = stats.linregress(self.depth_values,self.rgb_values)
-                        print 'slope: ', slope
-                        print 'z0', intercept
-                        time.sleep(1.0)
-                        
-                        if len(self.depth_values)>15:
-                            print 'Points used for regression'
-                            print 'rgb: ',self.rgb_values
-                            print 'depth: ',self.depth_values
-                            return
-                        
-        
-                
-        #except: 
-        #    pass
-        
-
 def main(argv):
     rospy.init_node("depth_offsets_calib",anonymous=True)
     if rospy.has_param("/use_sim_time"):

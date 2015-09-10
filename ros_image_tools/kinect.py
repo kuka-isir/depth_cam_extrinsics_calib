@@ -92,13 +92,9 @@ class Kinect:
             
         ## Frames
         self.depth_optical_frame    = camera_name+'_depth_optical_frame'
-        
         self.link_frame             = camera_name+'_link'
-        
         self.depth_frame            = camera_name+'_depth_frame'
-        
         self.rgb_frame              = camera_name+'_rgb_frame'
-        
         self.rgb_optical_frame      = camera_name+'_rgb_optical_frame'
 
         ## Get Intrinsics
@@ -245,22 +241,6 @@ class Kinect:
 
         return p_out
         
-    def rgb_to_camera_link(self,numpoint):
-        p = PointStamped()
-        p.header.frame_id = source_frame
-        p.point.x = numpoint[0]
-        p.point.y = numpoint[1]
-        p.point.z = numpoint[2]
-        p_out = [np.nan]*3
-        try:
-            self.tf.waitForTransform(target_frame,source_frame,rospy.Time(0),rospy.Duration(5.0))
-            geo_out = self.tf.transformPoint(target_frame, p).point
-            p_out = np.array([ geo_out.x,geo_out.y,geo_out.z])
-        except tf.Exception,e:
-            print e
-
-        return p_out
-        
     def get_closest_pt2d(self,pt3d,list_pt2d=None):
         if not isinstance(pt3d,list):
             pt3d = np.asarray(pt3d)
@@ -337,7 +317,9 @@ class Kinect:
             projMatrix = np.matrix(self.ir_camera_info.P).reshape(3,4)
             
         cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
-        cameraMatrix = projMatrix
+#==============================================================================
+#         cameraMatrix = projMatrix
+#==============================================================================
         fx_d = cameraMatrix[0,0]
         fy_d = cameraMatrix[1,1]
         cx_d = cameraMatrix[0,2]
@@ -358,7 +340,10 @@ class Kinect:
             print e
             
         if transform_to_camera_link:
-            return self.transform_point(result,self.link_frame,self.depth_optical_frame)
+            if not self.use_depth_registered:
+                return self.transform_point(result,self.link_frame,self.depth_optical_frame)
+            else:
+                return self.transform_point(result,self.link_frame,self.rgb_optical_frame)
         else:
             return np.array(result)
 
