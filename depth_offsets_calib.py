@@ -151,9 +151,9 @@ class KinectDepthOffsetsCalibration(Thread):
             except: pass
             with open(self.output_file,'w') as f:
                 f.write(
-"""z_offset: """+str(int(self.intercept*1000))+
+"""z_offset_mm: """+str(int(self.intercept*1000))+
 """
-z_scale: """ +str(self.slope)
+z_scaling: """ +str(self.slope)
 )
             print "File saved."             
                         
