@@ -90,7 +90,7 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         elif kinect_type == "Kinect":
             self.kinect_type = "Kinect"
             print "Loading Kinect1 with serial : "+serial
-            self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=True)
+            self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=False,use_ir=True)
         else:
             print "ERROR: Kinect type must be Kinect2 or Kinect"
             return       
@@ -212,9 +212,6 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
 </launch>
 """)
             print "File saved."
-            np.savetxt('/home/jimmy/A.txt', self.A, fmt='%f')            
-            np.savetxt('/home/jimmy/B.txt', self.B, fmt='%f')
-            
         else:
             print "Not saving calibration."
         return    

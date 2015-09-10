@@ -1,15 +1,25 @@
 <launch>
   <arg name="kinect_type" default="Kinect"/>
-  <arg name="kinect_name" default="kinect3"/>
-  <arg name="base_frame" default="/base_link"/>
-  <arg name="output_file" default="/home/jimmy/Desktop/kinect3_calib.launch"/>
-  <arg name="serial" default="1402240420"/>
+  <arg name="kinect_name" default="camera"/>
+  <arg name="output_file" default="/home/jimmy/catkin_ws/src/kinects_human_tracking/config/$(arg kinect_name)_depth_offsets.yaml"/>
+  <arg name="nb_pts" default="12"/>
+  <arg name="dz" default="0.05"/>
 
-  <node name="kinect_points_calibration" pkg="kinect_extrinsics_simple" type="depth_offsets_calib.py" output="screen">
+  <arg name="marker_size" default="4.0" />
+  <arg name="max_new_marker_error" default="0.08" />
+  <arg name="max_track_error" default="0.2" />
+  <arg name="cam_image_topic" default="/$(arg kinect_name)/rgb/image_mono" />
+  <arg name="cam_info_topic" default="/$(arg kinect_name)/rgb/camera_info" />		
+  <arg name="output_frame" default="/$(arg kinect_name)_link" />
+
+  <node name="ar_track_alvar" pkg="ar_track_alvar" type="individualMarkersNoKinect" respawn="false" output="screen" args="$(arg marker_size) $(arg max_new_marker_error) $(arg max_track_error) $(arg cam_image_topic) $(arg cam_info_topic) $(arg output_frame)" />
+
+
+  <node name="$(arg kinect_name)_depth_offsets_calibration" pkg="kinect_extrinsics_simple" type="depth_offsets_calib.py" output="screen">
     <param name="camera_name" value="$(arg kinect_name)" />
-    <param name="base_frame" value="$(arg base_frame)" />
-    <param name="output_file" value="$(arg output_file)" />
-    <param name="serial" value="$(arg serial)" type="str" /> 
     <param name="kinect_type" value="$(arg kinect_type)" /> 
+    <param name="output_file" value="$(arg output_file)" />
+    <param name="nb_pts" value="$(arg nb_pts)" />
+    <param name="dz" value="$(arg dz)" />
   </node>
 </launch>
