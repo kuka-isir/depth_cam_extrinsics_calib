@@ -1,6 +1,7 @@
 <launch>
   <arg name="kinect_type" default="Kinect"/>
   <arg name="kinect_name" default="camera"/>
+  <arg name="marker_id" default="0"/>
   <arg name="output_file" default="/home/jimmy/catkin_ws/src/kinects_human_tracking/config/$(arg kinect_name)_depth_offsets.yaml"/>
   <arg name="nb_pts" default="12"/>
   <arg name="dz" default="0.05"/>
@@ -18,6 +19,7 @@
   <node name="$(arg kinect_name)_depth_offsets_calibration" pkg="kinect_extrinsics_simple" type="depth_offsets_calib.py" output="screen">
     <param name="camera_name" value="$(arg kinect_name)" />
     <param name="kinect_type" value="$(arg kinect_type)" /> 
+    <param name="marker_id" value="$(arg marker_id)" /> 
     <param name="output_file" value="$(arg output_file)" />
     <param name="nb_pts" value="$(arg nb_pts)" />
     <param name="dz" value="$(arg dz)" />
