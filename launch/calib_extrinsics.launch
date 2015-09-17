@@ -1,8 +1,8 @@
 <launch>
   <arg name="kinect_type" default="Kinect"/>
-  <arg name="kinect_name" default="kinect3"/>
+  <arg name="kinect_name" default="camera"/>
   <arg name="base_frame" default="/base_link"/>
-  <arg name="output_file" default="/home/jimmy/Desktop/kinect3_calib.launch"/>
+  <arg name="output_file" default="$(find kinects_human_tracking)/launch/$(arg kinect_name)_extrinsics.launch"/>
   <arg name="serial" default="1402240420"/>
 
   <node name="kinect_points_calibration" pkg="kinect_extrinsics_simple" type="simple_singlepoints_calib.py" output="screen">

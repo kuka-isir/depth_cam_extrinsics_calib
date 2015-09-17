@@ -97,8 +97,8 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         
         self.kinect_name = kinect_name
         self.base_frame = base_frame
-        self.transform_name = 'calib_'+self.kinect_name[1:]
-        self.kinect.wait_until_ready()
+        self.transform_name = 'calib_'+self.kinect_name
+        self.kinect.wait_until_ready(1.0)
         
         self.depth_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_depth',PointCloud,queue_size=10)
         self.world_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_calib',PointCloud,queue_size=10)
@@ -205,8 +205,7 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
             except: pass
             with open(self.output_file_path,'w') as f:
                 print self.static_transform
-                f.write("""
-<launch>
+                f.write("""<launch>
    """+self.static_transform+
 """
 </launch>
@@ -225,7 +224,7 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         self.pixels_used = np.zeros((img_shape[0],img_shape[1]))
         
         cv2.namedWindow('Thresholding')
-        cv2.createTrackbar('Threshold','Thresholding',140,255,self.nothing)
+        cv2.createTrackbar('Threshold','Thresholding',160,255,self.nothing)
 
         listener = tf.TransformListener()
         
@@ -258,10 +257,6 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
             contours, _ = cv2.findContours(opening,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE)
             nb_contours = len(contours)                         
             if nb_contours == 3:
-                try:
-                    (trans,rot) = listener.lookupTransform('/world', '/calib_link', rospy.Time(0))
-                except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
-                    continue              
                 pt = []
                 middle_x = 0
                 middle_y = 0
@@ -305,7 +300,12 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                     if self.saved_pts is not None:
                         if (len(self.saved_pts)>=5):
                             self.saved_pts.pop(0)  
-                            
+                        
+                        try:
+                            (trans,rot) = listener.lookupTransform('/world', '/calib_link', rospy.Time(0))
+                        except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
+                            continue                          
+                        
                         self.saved_pts.append(trans)
                         
                         if (len(self.saved_pts)==5):
@@ -313,9 +313,10 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                             max_dist = np.amax(dists)
                             
                             # Check robot is not moving
-                            if max_dist == 0.0:
+                            if max_dist < 0.001:
                                 # Check pixel hasn't been used already
                                 if not self.pixels_used.item( (middle_y-1, middle_x-1) ):
+                                         
                                     self.pixels_used[middle_y-1, middle_x-1] = 1
                                     print 'SAVING FOR CALIBRATION !!!'
                                     self.A.append(pt)

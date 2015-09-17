@@ -39,6 +39,7 @@ class TfBroadcasterThread(Thread):
                 
             except Exception,e:
                 print 'TfBroadcasterThread:',e
+                raise KeyboardInterrupt
             time.sleep(0.01)
         
 

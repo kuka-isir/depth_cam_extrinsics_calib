@@ -126,14 +126,15 @@ class KinectDepthOffsetsCalibration(Thread):
                             if min_d<self.dz:
                                 return
                             
-                            if dist_rgb>0.5:
+                            if dist_rgb>0.51:
                                 self.last_used_time = rospy.Time.now()
                                 self.rgb_values.append(dist_rgb)
                                 self.depth_values.append(dist_depth)
                                 
                                 self.slope, self.intercept, r_value, p_value, std_err = stats.linregress(self.depth_values,self.rgb_values)
                                 print 'slope: ', self.slope
-                                print 'z0', self.intercept,'\n'
+                                print 'z0', self.intercept
+                                print 'slope error',std_err, '\n'
                                 
                                 if len(self.depth_values)>=self.nb_pts:
                                     rospy.signal_shutdown('CALIBRATION DONE !')

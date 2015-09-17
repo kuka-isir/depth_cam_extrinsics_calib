@@ -317,9 +317,7 @@ class Kinect:
             projMatrix = np.matrix(self.ir_camera_info.P).reshape(3,4)
             
         cameraMatrix, rotMatrix, transVect, rotMatrixX, rotMatrixY, rotMatrixZ, eulerAngles = cv2.decomposeProjectionMatrix(projMatrix)
-#==============================================================================
-#         cameraMatrix = projMatrix
-#==============================================================================
+        
         fx_d = cameraMatrix[0,0]
         fy_d = cameraMatrix[1,1]
         cx_d = cameraMatrix[0,2]
