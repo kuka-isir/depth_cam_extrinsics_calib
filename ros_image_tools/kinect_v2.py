@@ -115,6 +115,7 @@ class Kinect_v2:
             camera_info.D = np.array(calib["distortionCoefficients"]["data"])
             camera_info.R = np.matrix(calib["rotation"]["data"])
             camera_info.P = np.matrix(calib["projection"]["data"])
+            camera_info.P = np.delete(camera_info.P, [15,14,13,12])
             print camera_info
         return camera_info
 
@@ -264,9 +265,9 @@ class Kinect_v2:
                 z = (depth_img[y][x])[0]
                 if (z == 0):
                     return [np.nan]*3
-                print "depth is : "+str(z)                    
                 result = [(x - cx_d) * z / fx_d ,(y - cy_d) * z / fy_d, z ]
-        except Exception,e: print e
+        except Exception,e: 
+            print e
 
         if transform_to_camera_link:
             return self.transform_point(result,self.link_frame,self.depth_optical_frame)

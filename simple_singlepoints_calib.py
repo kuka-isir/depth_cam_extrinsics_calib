@@ -77,7 +77,7 @@ def rigid_transform_3D(A, B):
     return R, t
 
 class KinectSinglePointsCalibrationExtrinsics(Thread):
-    def __init__(self,kinect_type, kinect_name,base_frame,serial,output_file=None):
+    def __init__(self,kinect_type, kinect_name,base_frame,calibration_frame,serial,output_file=None):
         Thread.__init__(self)
         if kinect_name[-1] == '/':
             kinect_name = kinect_name[:-1]
@@ -86,8 +86,8 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         if (kinect_type == "Kinect2") or (kinect_type == "Kinectv2") or (kinect_type == "Kinect_v2"):
             self.kinect_type = "Kinect2"
             print "Loading Kinect2 with serial : "+serial 
-            self.kinect = Kinect_v2(kinect_name,serial,queue_size=10,compression=False,use_rect=False,use_ir=True)
-        elif kinect_type == "Kinect":
+            self.kinect = Kinect_v2(kinect_name,serial,queue_size=10,compression=False,use_rect=True,use_ir=True)
+        elif (kinect_type == "Kinect") or (kinect_type == "Kinect1") or (kinect_type == "Kinectv1") or (kinect_type == "Kinect_v1"):
             self.kinect_type = "Kinect"
             print "Loading Kinect1 with serial : "+serial
             self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=False,use_ir=True)
@@ -97,6 +97,7 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         
         self.kinect_name = kinect_name
         self.base_frame = base_frame
+        self.calibration_frame = calibration_frame
         self.transform_name = 'calib_'+self.kinect_name
         self.kinect.wait_until_ready(1.0)
         
@@ -229,7 +230,6 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         listener = tf.TransformListener()
         
         while not rospy.is_shutdown():
-            
             self.kinect.show_ir()
             ir_img = self.kinect.get_ir(blocking=False)
             ir_array = np.array(ir_img, dtype=np.float32)
@@ -294,18 +294,18 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                 
                 pt = self.kinect.depth_to_world(middle_x,middle_y,transform_to_camera_link=True)
                 if not (True in np.isnan(pt)) and (pt is not None):
-                    if self.kinect_type=="Kinect":
-                        pt=pt/1000 
-                    
+                    pt[0]=pt[0]/1000.0
+                    pt[1]=pt[1]/1000.0
+                    pt[2]=pt[2]/1000.0
+                        
                     if self.saved_pts is not None:
                         if (len(self.saved_pts)>=5):
                             self.saved_pts.pop(0)  
-                        
+                            
                         try:
-                            (trans,rot) = listener.lookupTransform('/world', '/calib_link', rospy.Time(0))
+                            (trans,rot) = listener.lookupTransform(self.base_frame, self.calibration_frame, rospy.Time(0))
                         except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                             continue                          
-                        
                         self.saved_pts.append(trans)
                         
                         if (len(self.saved_pts)==5):
@@ -316,7 +316,6 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                             if max_dist < 0.001:
                                 # Check pixel hasn't been used already
                                 if not self.pixels_used.item( (middle_y-1, middle_x-1) ):
-                                         
                                     self.pixels_used[middle_y-1, middle_x-1] = 1
                                     print 'SAVING FOR CALIBRATION !!!'
                                     self.A.append(pt)
@@ -341,11 +340,12 @@ def main(argv):
        
     kinect_name = rospy.get_param('~camera_name')
     base_frame = rospy.get_param('~base_frame')
+    calibration_frame = rospy.get_param('~calibration_frame')
     output_file = rospy.get_param('~output_file')
     serial = rospy.get_param('~serial')
     kinect_type = rospy.get_param('~kinect_type')
     
-    calib = KinectSinglePointsCalibrationExtrinsics(kinect_type, kinect_name, base_frame, serial, output_file)
+    calib = KinectSinglePointsCalibrationExtrinsics(kinect_type, kinect_name, base_frame, calibration_frame, serial, output_file)
     calib.start()
     rospy.spin()
     calib.save_calibration()
