@@ -6,7 +6,6 @@ Created on Wed Sep  9 13:15:12 2015
 @author: Jimmy Da Silva <jimmy.dasilva@isir.upmc.fr>
 """
 
-from ros_image_tools.kinect_v2 import Kinect_v2
 from ros_image_tools.kinect import Kinect
 import rospy
 import cv2
@@ -56,10 +55,9 @@ class KinectDepthOffsetsCalibration(Thread):
         
         if (kinect_type == "Kinect2") or (kinect_type == "Kinectv2") or (kinect_type == "Kinect_v2"):
             print "Loading "+kinect_name+" of type Kinect2"
-            # self.kinect = Kinect_v2(kinect_name,serial,queue_size=10,compression=False,use_rect=True,use_ir=False)
-            print "ERROR: Kinect2 not handled yet"
+            print "ERROR: Kinect2 offset is already been computed during the intrinsics calibration. Nothing to be done here"
             return
-        elif kinect_type == "Kinect":
+        elif (kinect_type == "Kinect") or (kinect_type == "Kinect1") or (kinect_type == "Kinectv1") or (kinect_type == "Kinect_v1"):
             print "Loading "+kinect_name+" of type Kinect1"
             self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=False)
         else:
