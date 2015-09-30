@@ -104,7 +104,7 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         self.depth_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_depth',PointCloud,queue_size=10)
         self.world_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_calib',PointCloud,queue_size=10)
         self.calib_pt_pub = rospy.Publisher(self.kinect_name+'/calib_pt',PointStamped,queue_size=10)
-        self.frame_pt_pub = rospy.Publisher(self.kinect_name+'/frame_pt',PointStamped,queue_size=10)
+        self.robot_pt_pub = rospy.Publisher(self.kinect_name+'/robot_pt',PointStamped,queue_size=10)
 
         self.A=[]
         self.B=[]         
@@ -292,11 +292,19 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                 cv2.circle(detection_img,(middle_x,middle_y),2,(0,255,0),-1)
                 cv2.imshow("Detection", detection_img)
                 
+                cv2.circle(depth_array,(middle_x,middle_y),2,255,-1)
+                cv2.imshow("Detection_raw", depth_array)
+                
                 pt = self.kinect.depth_to_world(middle_x,middle_y,transform_to_camera_link=True)
                 if not (True in np.isnan(pt)) and (pt is not None):
-                    pt[0]=pt[0]/1000.0
-                    pt[1]=pt[1]/1000.0
-                    pt[2]=pt[2]/1000.0
+                    
+                    calib_pt = PointStamped()
+                    calib_pt.header.frame_id=self.kinect.link_frame
+                    calib_pt.header.stamp = rospy.Time.now()
+                    calib_pt.point.x = pt[0]
+                    calib_pt.point.y = pt[1]
+                    calib_pt.point.z = pt[2]
+                    self.calib_pt_pub.publish(calib_pt)
                         
                     if self.saved_pts is not None:
                         if (len(self.saved_pts)>=5):
@@ -304,6 +312,13 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                             
                         try:
                             (trans,rot) = listener.lookupTransform(self.base_frame, self.calibration_frame, rospy.Time(0))
+                            robot_pt = PointStamped()
+                            robot_pt.header.frame_id=self.base_frame
+                            robot_pt.header.stamp = rospy.Time.now()
+                            robot_pt.point.x = trans[0]
+                            robot_pt.point.y = trans[1]
+                            robot_pt.point.z = trans[2]
+                            self.robot_pt_pub.publish(robot_pt)
                         except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                             continue                          
                         self.saved_pts.append(trans)

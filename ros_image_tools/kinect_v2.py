@@ -201,7 +201,6 @@ class Kinect_v2:
             p_out = np.array([ geo_out.x,geo_out.y,geo_out.z])
         except tf.Exception,e:
             print e
-
         return p_out
         
     def get_closest_pt2d(self,pt3d,list_pt2d=None):
@@ -267,11 +266,13 @@ class Kinect_v2:
         result = [np.nan]*3
         
         try:
-            if depth_img.size:
-                z = (depth_img[y][x])[0]
+            if depth_img is not None:
+                z = (depth_img[y][x])[0]/1000.0
                 if (z == 0):
                     return [np.nan]*3
                 result = [(x - cx_d) * z / fx_d ,(y - cy_d) * z / fy_d, z ]
+            else:
+                return [np.nan]*3
         except Exception,e: 
             print e
 
