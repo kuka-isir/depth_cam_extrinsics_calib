@@ -109,12 +109,18 @@ class Kinect_v2:
     
         print 'Loading camera '+img_name+' info at:',file_url
         with open(file_url, 'r') as f:
-            calib = yaml.load(f)
-            #print 'calib '+calib
+            stream = f.read()
+            # HACK : remove new stuff addded by kinect 2
+            stream = stream.replace("%YAML:1.0","")
+            stream = stream.replace("!!opencv-matrix","")
+            #print stream
+            calib = yaml.load(stream)
+            #print 'calib ',calib
             camera_info.K = np.matrix(calib["cameraMatrix"]["data"])
             camera_info.D = np.array(calib["distortionCoefficients"]["data"])
             camera_info.R = np.matrix(calib["rotation"]["data"])
             camera_info.P = np.matrix(calib["projection"]["data"])
+            # HACK : remove last line of projection matrix
             camera_info.P = np.delete(camera_info.P, [15,14,13,12])
             print camera_info
         return camera_info
