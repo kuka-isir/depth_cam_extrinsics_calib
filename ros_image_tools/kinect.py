@@ -328,8 +328,8 @@ class Kinect:
         result = [np.nan]*3
         
         try:
-            if depth_img.size:
-                z = (depth_img[y][x])[0]
+            if depth_img is not None:
+                z = (depth_img[y][x])[0]/1000.0
                 if (z == 0):
                     return [np.nan]*3
                               

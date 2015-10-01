@@ -271,8 +271,6 @@ class Kinect_v2:
                 if (z == 0):
                     return [np.nan]*3
                 result = [(x - cx_d) * z / fx_d ,(y - cy_d) * z / fy_d, z ]
-            else:
-                return [np.nan]*3
         except Exception,e: 
             print e
 

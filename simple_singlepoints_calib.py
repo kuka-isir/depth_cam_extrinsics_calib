@@ -8,15 +8,12 @@ Created on Wed Jun 03 15:47:00 2015
 
 from ros_image_tools.kinect_v2 import Kinect_v2
 from ros_image_tools.kinect import Kinect
-from ros_image_tools.tf_broadcaster import TfBroadcasterThread
 import rospy
 import time
 import cv2
-from cv2 import estimateAffine3D
 import tf
-import tf_conversions
 import math
-import argparse,textwrap,sys
+import sys
 from geometry_msgs.msg import PointStamped
 import numpy as np
 from tf.transformations import quaternion_from_matrix
@@ -104,43 +101,17 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         self.depth_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_depth',PointCloud,queue_size=10)
         self.world_pt_pub = rospy.Publisher(self.kinect_name+'/calibration/pts_calib',PointCloud,queue_size=10)
         self.calib_pt_pub = rospy.Publisher(self.kinect_name+'/calib_pt',PointStamped,queue_size=10)
-        self.robot_pt_pub = rospy.Publisher(self.kinect_name+'/robot_pt',PointStamped,queue_size=10)
 
         self.A=[]
         self.B=[]         
-        self.pt2d=[]
-        self.pt2d_fit=[]
-        self.single_pt_pos=[]
-        
+        self.static_transform = None
         self.saved_pts = []
         
-        self.tf_thread = TfBroadcasterThread(self.kinect.link_frame,self.base_frame)
-        
+        self.tf_broadcaster = tf.TransformBroadcaster()
             
     def calibrate3d(self):
-        # print self.A
         A = np.matrix(self.A)
         B = np.matrix(self.B)
-        
-#==============================================================================
-# 
-#         ########### Test RANSAC OpenCV affine estimation ###########
-#         print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!'
-#         (_,transMatOut,_) = cv2.estimateAffine3D(A, B, ransacThreshold=3.0, confidence=0.99)        
-#         transMatOut = transMatOut.tolist()
-#         transMatOut.append([0,0,0,1])
-#         transMatOut = np.array(transMatOut)
-#         quaternion  = tf_conversions.transformations.quaternion_from_matrix(transMatOut)
-#         translation = tf_conversions.transformations.translation_from_matrix(transMatOut)
-#         print transMatOut
-#         print "Translation - Rotation"
-#         print translation, quaternion
-#         print '!!!!!!!!!!!!!!!!!!!!!!!!!!!!'        
-#         
-#         # Send the transform to ROS
-#         self.tf_thread.set_transformation(translation,quaternion)
-#==============================================================================
-        
 
         ret_R, ret_t = rigid_transform_3D(A, B)
         new_col = ret_t.reshape(3, 1)
@@ -151,12 +122,11 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         quaternion = quaternion_from_matrix(T)
 
         # Send the transform to ROS
-        self.tf_thread.set_transformation(ret_t,quaternion)
-
-        invR = ret_R.T
-        invT = -invR * ret_t
+        self.tf_broadcaster.sendTransform(ret_t ,quaternion , rospy.Time.now(), self.kinect.link_frame,self.base_frame)
 
         ## Compute inverse of transformation
+        invR = ret_R.T
+        invT = -invR * ret_t
         B_in_A = np.empty(B.shape)
         for i in xrange(len(B)):
             p = invR*B[i].T + invT
@@ -192,7 +162,6 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         return pt_out
 
     def save_calibration(self):
-        #TODO
         if not self.static_transform or not self.output_file_path:
             print 'Not saving files'
             return
@@ -220,7 +189,6 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
         pass
     
     def start(self):
-        self.tf_thread.start()
         img_shape = np.array(self.kinect.get_ir(blocking=False)).shape
         self.pixels_used = np.zeros((img_shape[0],img_shape[1]))
         
@@ -292,18 +260,10 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                 cv2.circle(detection_img,(middle_x,middle_y),2,(0,255,0),-1)
                 cv2.imshow("Detection", detection_img)
                 
-                cv2.circle(depth_array,(middle_x,middle_y),2,255,-1)
-                cv2.imshow("Detection_raw", depth_array)
-                
                 pt = self.kinect.depth_to_world(middle_x,middle_y,transform_to_camera_link=True)
-                if not (True in np.isnan(pt)) and (pt is not None):
+                if not (True in np.isnan(pt)) and (pt is not None):                
                     
-                    calib_pt = PointStamped()
-                    calib_pt.header.frame_id=self.kinect.link_frame
-                    calib_pt.header.stamp = rospy.Time.now()
-                    calib_pt.point.x = pt[0]
-                    calib_pt.point.y = pt[1]
-                    calib_pt.point.z = pt[2]
+                    calib_pt = self.get_point_stamped(pt, self.kinect.link_frame)
                     self.calib_pt_pub.publish(calib_pt)
                         
                     if self.saved_pts is not None:
@@ -312,13 +272,6 @@ class KinectSinglePointsCalibrationExtrinsics(Thread):
                             
                         try:
                             (trans,rot) = listener.lookupTransform(self.base_frame, self.calibration_frame, rospy.Time(0))
-                            robot_pt = PointStamped()
-                            robot_pt.header.frame_id=self.base_frame
-                            robot_pt.header.stamp = rospy.Time.now()
-                            robot_pt.point.x = trans[0]
-                            robot_pt.point.y = trans[1]
-                            robot_pt.point.z = trans[2]
-                            self.robot_pt_pub.publish(robot_pt)
                         except (tf.LookupException, tf.ConnectivityException, tf.ExtrapolationException):
                             continue                          
                         self.saved_pts.append(trans)
