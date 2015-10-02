@@ -109,8 +109,7 @@ class KinectDepthOffsetsCalibration(Thread):
                     
                     diff_time = (rospy.Time.now() - self.last_used_time).to_sec()
                     if diff_time>1.0:            
-                        if not (True in np.isnan(depth_tag_frame)) and (depth_tag_frame is not None):          
-                            depth_tag_frame = depth_tag_frame/1000                
+                        if not (True in np.isnan(depth_tag_frame)) and (depth_tag_frame is not None):               
                 
                             dist_rgb = np.linalg.norm(np.array(trans))
                             dist_depth = np.linalg.norm(depth_tag_frame)
