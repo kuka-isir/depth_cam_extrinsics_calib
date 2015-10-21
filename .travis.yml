@@ -17,15 +17,13 @@ matrix:
     - env: CI_ROS_DISTRO="jade"
 
 install:
-  - sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu trusty main" > /etc/apt/sources.list.d/ros-latest.list'
+ - sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu trusty main" > /etc/apt/sources.list.d/ros-latest.list'
   - wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
   - sudo apt-get update -qq
   - sudo apt-get install -qq -y python-rosdep python-catkin-tools
+  - sudo apt-get install -qq -y ros-$CI_ROS_DISTRO-catkin ros-$CI_ROS_DISTRO-ros
   - sudo rosdep init
   - rosdep update
-  # Use rosdep to install all dependencies (including ROS itself)
-  - rosdep install --from-paths ./ -i -y --rosdistro $CI_ROS_DISTRO
-script:
   - source /opt/ros/$CI_ROS_DISTRO/setup.bash
   - mkdir -p $CATKIN_WS_SRC
   - ln -s $TRAVIS_BUILD_DIR $CATKIN_WS_SRC
@@ -34,6 +32,7 @@ script:
   - cd $CATKIN_WS_SRC
   - git clone https://github.com/kuka-isir/depth_cam_tools
   - rosdep install -r --from-paths $CATKIN_WS_SRC/ --rosdistro $ROS_DISTRO -y
+script:
   # Enable install space
   #- catkin config --install
   # Build [and Install] packages
