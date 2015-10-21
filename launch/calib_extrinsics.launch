@@ -6,7 +6,7 @@
   <arg name="output_file" default="$(find kinects_human_tracking)/launch/$(arg kinect_name)_extrinsics.launch"/>
   <arg name="serial" default="501427243142"/>  <!-- Only necessary for Kinectv2 type -->
 
-  <node name="kinect_points_calibration" pkg="kinect_extrinsics_simple" type="simple_singlepoints_calib.py" output="screen">
+  <node name="kinect_points_calibration" pkg="depth_cam_extrinsics_calib" type="simple_singlepoints_calib.py" output="screen">
     <param name="camera_name" value="$(arg kinect_name)" />
     <param name="base_frame" value="$(arg base_frame)" />
     <param name="calibration_frame" value="$(arg calibration_frame)" />

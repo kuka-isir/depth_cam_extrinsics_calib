@@ -16,7 +16,7 @@
   <node name="ar_track_alvar" pkg="ar_track_alvar" type="individualMarkersNoKinect" respawn="false" output="screen" args="$(arg marker_size) $(arg max_new_marker_error) $(arg max_track_error) $(arg cam_image_topic) $(arg cam_info_topic) $(arg output_frame)" />
 
 
-  <node name="$(arg kinect_name)_depth_offsets_calibration" pkg="kinect_extrinsics_simple" type="depth_offsets_calib.py" output="screen">
+  <node name="$(arg kinect_name)_depth_offsets_calibration" pkg="depth_cam_extrinsics_calib" type="depth_offsets_calib.py" output="screen">
     <param name="camera_name" value="$(arg kinect_name)" />
     <param name="kinect_type" value="$(arg kinect_type)" /> 
     <param name="marker_id" value="$(arg marker_id)" /> 
