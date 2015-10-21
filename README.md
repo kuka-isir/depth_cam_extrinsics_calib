@@ -1,4 +1,6 @@
-# Kinect extrinsics calibration 
+Depth camera extrinsics calibration
+=====
+[![Build Status](https://travis-ci.org/kuka-isir/depth_cam_extrinsics_calib.svg?branch=master)](https://travis-ci.org/kuka-isir/depth_cam_extrinsics_calib)
 
 This is a simple tool to estimate the extrinsics (world to kinect) of a depth sensor.
 ### Calibration instructions
