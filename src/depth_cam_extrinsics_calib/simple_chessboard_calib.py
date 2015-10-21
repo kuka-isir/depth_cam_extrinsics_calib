@@ -6,8 +6,8 @@ Created on Fri Nov 28 10:27:00 2014
 @author: Antoine Hoarau <hoarau.robotics@gmail.com>
 """
 
-from ros_image_tools.kinect import Kinect
-from ros_image_tools.tf_broadcaster import TfBroadcasterThread
+from depth_cam_tools.kinect import Kinect
+from depth_cam_tools.tf_broadcaster import TfBroadcasterThread
 import rospy
 import time
 import cv2

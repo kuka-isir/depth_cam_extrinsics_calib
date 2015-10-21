@@ -6,7 +6,7 @@ Created on Wed Sep  9 13:15:12 2015
 @author: Jimmy Da Silva <jimmy.dasilva@isir.upmc.fr>
 """
 
-from ros_image_tools.kinect import Kinect
+from depth_cam_tools.kinect import Kinect
 import rospy
 import cv2
 import sys
