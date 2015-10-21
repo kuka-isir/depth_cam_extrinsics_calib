@@ -31,6 +31,9 @@ script:
   - ln -s $TRAVIS_BUILD_DIR $CATKIN_WS_SRC
   - cd $CATKIN_WS
   - catkin init
+  - cd $CATKIN_WS_SRC
+  - git clone https://github.com/kuka-isir/depth_cam_extrinsics_calib
+  - rosdep install -r --from-paths $CATKIN_WS_SRC/ --rosdistro $ROS_DISTRO -y
   # Enable install space
   #- catkin config --install
   # Build [and Install] packages
