@@ -6,8 +6,9 @@ Created on Wed Jun 03 15:47:00 2015
 @author: Jimmy Da Silva <jimmy.dasilva@isir.upmc.fr>
 """
 
-from depth_cam_tools.kinect_v2 import Kinect_v2
-from depth_cam_tools.kinect import Kinect
+from depth_cam_tools.xtion_pro_live import XtionProLive
+from depth_cam_tools.kinect1 import Kinect1
+from depth_cam_tools.kinect2 import Kinect2
 
 import rospy
 import time
@@ -75,22 +76,26 @@ def rigid_transform_3D(A, B):
     return R, t
 
 class KinectSinglePointsCalibrationExtrinsics(Thread):
-    def __init__(self,kinect_type, kinect_name,base_frame,calibration_frame,serial,output_file=None):
+    def __init__(self,kinect_type, kinect_name,base_frame,calibration_frame,output_file=None):
         Thread.__init__(self)
         if kinect_name[-1] == '/':
             kinect_name = kinect_name[:-1]
         self.output_file_path = output_file
         
-        if (kinect_type == "Kinect2") or (kinect_type == "Kinectv2") or (kinect_type == "Kinect_v2"):
+        if (kinect_type == "Kinect2") or (kinect_type == "Kinectv2") or (kinect_type == "KinectV2"):
             self.kinect_type = "Kinect2"
-            print "Loading Kinect2 with serial : "+serial 
-            self.kinect = Kinect_v2(kinect_name,serial,queue_size=10,compression=False,use_rect=True,use_ir=True)
-        elif (kinect_type == "Kinect") or (kinect_type == "Kinect1") or (kinect_type == "Kinectv1") or (kinect_type == "Kinect_v1"):
-            self.kinect_type = "Kinect"
-            print "Loading Kinect1 with serial : "+serial
-            self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=False,use_ir=True)
+            print "Loading "+kinect_name+" of type Kinect2"
+            self.kinect = Kinect2(kinect_name,queue_size=10,compression=False,use_rect=True)
+        elif (kinect_type == "Kinect") or (kinect_type == "Kinect1") or (kinect_type == "Kinectv1") or (kinect_type == "KinectV1"):
+            self.kinect_type = "Kinect1"
+            print "Loading "+kinect_name+" of type Kinect1"
+            self.kinect = Kinect1(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=False,use_ir=True)
+        elif (kinect_type == "Xtion"):
+            self.kinect_type = "Xtion"
+            print "Loading "+kinect_name+" of type Xtion"
+            self.kinect = XtionProLive(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=False,use_ir=True)
         else:
-            print "ERROR: Kinect type must be Kinect2 or Kinect"
+            print "ERROR: Kinect type must be Kinect2, Kinect1 or Xtion"
             return       
         
         self.kinect_name = kinect_name
@@ -311,10 +316,9 @@ def main(argv):
     base_frame = rospy.get_param('~base_frame')
     calibration_frame = rospy.get_param('~calibration_frame')
     output_file = rospy.get_param('~output_file')
-    serial = rospy.get_param('~serial')
     kinect_type = rospy.get_param('~kinect_type')
     
-    calib = KinectSinglePointsCalibrationExtrinsics(kinect_type, kinect_name, base_frame, calibration_frame, serial, output_file)
+    calib = KinectSinglePointsCalibrationExtrinsics(kinect_type, kinect_name, base_frame, calibration_frame, output_file)
     calib.start()
     rospy.spin()
     calib.save_calibration()

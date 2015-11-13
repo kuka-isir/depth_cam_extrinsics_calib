@@ -6,7 +6,8 @@ Created on Wed Sep  9 13:15:12 2015
 @author: Jimmy Da Silva <jimmy.dasilva@isir.upmc.fr>
 """
 
-from depth_cam_tools.kinect import Kinect
+from depth_cam_tools.kinect1 import Kinect1
+from depth_cam_tools.xtion_pro_live import XtionProLive
 import rospy
 import cv2
 import sys
@@ -52,17 +53,22 @@ class KinectDepthOffsetsCalibration(Thread):
         Thread.__init__(self)
         if kinect_name[-1] == '/':
             kinect_name = kinect_name[:-1]
-        
-        if (kinect_type == "Kinect2") or (kinect_type == "Kinectv2") or (kinect_type == "Kinect_v2"):
+
+        if (kinect_type == "Kinect2") or (kinect_type == "Kinectv2") or (kinect_type == "KinectV2"):
+            self.kinect_type = "Kinect2"
             print "Loading "+kinect_name+" of type Kinect2"
             print "ERROR: Kinect2 offset is already been computed during the intrinsics calibration. Nothing to be done here"
-            return
-        elif (kinect_type == "Kinect") or (kinect_type == "Kinect1") or (kinect_type == "Kinectv1") or (kinect_type == "Kinect_v1"):
+        elif (kinect_type == "Kinect") or (kinect_type == "Kinect1") or (kinect_type == "Kinectv1") or (kinect_type == "KinectV1"):
+            self.kinect_type = "Kinect1"
             print "Loading "+kinect_name+" of type Kinect1"
-            self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=False)
+            self.kinect = Kinect1(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=False)
+        elif (kinect_type == "Xtion"):
+            self.kinect_type = "Xtion"
+            print "Loading "+kinect_name+" of type Xtion"
+            self.kinect = XtionProLive(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True,use_ir=False)
         else:
-            print "ERROR: Kinect type must be Kinect2 or Kinect"
-            return       
+            print "ERROR: Kinect type must be Kinect1 or Xtion"
+            return 
         
         self.marker_id = marker_id
         self.output_file = output_file

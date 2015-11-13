@@ -6,7 +6,7 @@ Created on Fri Nov 28 10:27:00 2014
 @author: Antoine Hoarau <hoarau.robotics@gmail.com>
 """
 
-from depth_cam_tools.kinect import Kinect
+from depth_cam_tools.kinect1 import Kinect1
 from depth_cam_tools.tf_broadcaster import TfBroadcasterThread
 import rospy
 import time
@@ -103,7 +103,7 @@ class KinectChessboardCalibrationExtrinsics(Thread):
         if kinect_name[-1] == '/':
             kinect_name = kinect_name[:-1]
         self.output_file_path = output_file
-        self.kinect = Kinect(kinect_name,queue_size=10,compression=False,use_rect=True)
+        self.kinect = Kinect1(kinect_name,queue_size=10,compression=False,use_rect=True,use_depth_registered=True, use_ir=False)
         self.kinect_name = kinect_name
         self.base_frame = base_frame
         self.transform_name = 'calib_'+self.kinect_name[1:]
