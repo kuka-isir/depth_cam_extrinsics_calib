@@ -23,11 +23,13 @@
   <build_depend>openni_launch</build_depend>
   <build_depend>rospy</build_depend>
   <build_depend>depth_cam_tools</build_depend>
+  <build_depend>ar_track_alvar</build_depend>
   <run_depend>cv_bridge</run_depend>
   <run_depend>openni_camera</run_depend>
   <run_depend>openni_launch</run_depend>
   <run_depend>rospy</run_depend>
   <run_depend>depth_cam_tools</run_depend>
+  <run_depend>ar_track_alvar</run_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->
