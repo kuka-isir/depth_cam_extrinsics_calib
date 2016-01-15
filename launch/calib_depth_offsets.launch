@@ -2,7 +2,7 @@
   <arg name="kinect_type" default="Kinect"/>
   <arg name="kinect_name" default="camera"/>
   <arg name="marker_id" default="0"/>
-  <arg name="output_file" default="/home/jimmy/catkin_ws/src/kinects_human_tracking/config/$(arg kinect_name)_depth_offsets.yaml"/>
+  <arg name="output_file" default="$(find kinects_human_tracking)/config/$(arg kinect_name)_depth_offsets.yaml"/>
   <arg name="nb_pts" default="12"/>
   <arg name="dz" default="0.05"/>
 
