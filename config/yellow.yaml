@@ -1,0 +1,9 @@
+h_max: 79
+h_min: 42
+mean_k: 516
+s_max: 0.91
+s_min: 0.38
+use_StatisticalOutlierRemoval: true
+v_max: 0.7
+v_min: 0.23
+
