@@ -1,0 +1,11 @@
+<launch>
+
+	<arg name="topic_in" default="/camera/depth_registered/points"/>
+	<arg name="color" default="yellow"/>
+
+	<node pkg="depth_cam_extrinsics_calib" type="hsv_segmentation" name="hsv_segmentation" output="screen" >
+		<param name="topic_in" value="$(arg topic_in)"/>
+		<rosparam command="load" file="$(find depth_cam_extrinsics_calib)/config/$(arg color).yaml"/>
+	</node>
+
+</launch>
