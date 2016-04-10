@@ -41,7 +41,7 @@ target_link_libraries(hsv_segmentation
  
 add_executable(tf_to_pt src/tf_to_pointstamped.cpp)
 add_dependencies(tf_to_pt ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(hsv_segmentation
+target_link_libraries(tf_to_pt
    ${catkin_LIBRARIES}
    ${PCL_LIBRARIES}
  )
