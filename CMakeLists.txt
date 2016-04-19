@@ -38,10 +38,21 @@ target_link_libraries(hsv_segmentation
    ${catkin_LIBRARIES}
    ${PCL_LIBRARIES}
  )
- 
+
 add_executable(tf_to_pt src/tf_to_pointstamped.cpp)
 add_dependencies(tf_to_pt ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(tf_to_pt
    ${catkin_LIBRARIES}
    ${PCL_LIBRARIES}
+ )
+
+ install(TARGETS hsv_segmentation tf_to_pt
+   ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+   RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+ )
+
+ install(DIRECTORY include/${PROJECT_NAME}/
+   DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+   PATTERN ".svn" EXCLUDE
  )
