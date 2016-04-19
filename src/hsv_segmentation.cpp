@@ -14,9 +14,9 @@
 #include <pcl/segmentation/extract_clusters.h>
 
 #include <dynamic_reconfigure/server.h>
-#include <depth_cam_extrinsics_calib/calibConfig.h>
+#include <depth_cam_extrinsics_calib/paramsConfig.h>
 
-depth_cam_extrinsics_calib::calibConfig config; 
+depth_cam_extrinsics_calib::paramsConfig config;
 ros::Publisher point_st_pub,cloud_pub;
 
 // From https://github.com/joshvillbrandt/mecanumbot-ros-pkg/blob/master/src/ball_tracker.cpp
@@ -50,7 +50,7 @@ namespace cloud_helpers
 
         return avg;
     }
-    
+
   void PointCloudXYZHSVtoXYZRGB(pcl::PointCloud<pcl::PointXYZHSV>& in, pcl::PointCloud<pcl::PointXYZRGB>& out)
     {
         out.width = in.width;
@@ -113,13 +113,13 @@ void callback(const pcl::PCLPointCloud2ConstPtr& cloud_in){
 
 	// filter saturation
 	pcl::PassThrough<pcl::PointXYZHSV> pass;
-	
+
 	pass.setInputCloud (cloud_filtered);
 	pass.setFilterFieldName ("h");
 	pass.setFilterLimits(config.h_min, config.h_max);
 	pass.setFilterLimitsNegative (false);
 	pass.filter (*cloud_filtered);
-	
+
 	pass.setInputCloud (cloud_filtered);
 	pass.setFilterFieldName ("s");
 	pass.setFilterLimits(config.s_min, config.s_max);
@@ -142,7 +142,7 @@ void callback(const pcl::PCLPointCloud2ConstPtr& cloud_in){
 	  sor.setStddevMulThresh(0.01); // smaller is more restrictive
 	  sor.filter(*cloud_filtered);
 	}
-	
+
 	if(cloud_filtered->width*cloud_filtered->height > 0) {
 	  pcl::PointXYZHSV avg = cloud_helpers::getCloudAverage(cloud_filtered);
 	  geometry_msgs::PointStamped pt_out;
@@ -162,7 +162,7 @@ void callback(const pcl::PCLPointCloud2ConstPtr& cloud_in){
 	}
 }
 
-void callbackConfig(depth_cam_extrinsics_calib::calibConfig& _config, uint32_t level)
+void callbackConfig(depth_cam_extrinsics_calib::paramsConfig& _config, uint32_t level)
 {
   ROS_INFO("Updating config : H[%d,%d] S[%f,%f] V[%f,%f]",_config.h_min,_config.h_max,_config.v_min,_config.v_max,_config.s_min,_config.s_max);
   config = _config;
@@ -170,20 +170,20 @@ void callbackConfig(depth_cam_extrinsics_calib::calibConfig& _config, uint32_t l
 
 int main(int argc, char *argv[]){
 	ros::init(argc, argv, "pcl_hsv_seg");
-		
-	dynamic_reconfigure::Server<depth_cam_extrinsics_calib::calibConfig> srv;
-	dynamic_reconfigure::Server<depth_cam_extrinsics_calib::calibConfig>::CallbackType f;
+
+	dynamic_reconfigure::Server<depth_cam_extrinsics_calib::paramsConfig> srv;
+	dynamic_reconfigure::Server<depth_cam_extrinsics_calib::paramsConfig>::CallbackType f;
 	f = boost::bind(&callbackConfig, _1, _2);
 	srv.setCallback(f);
 
 	ros::NodeHandle nh,nh_priv("~");
 	std::string topic_in("/camera/depth_registered/points");
-	
+
 	if(!nh_priv.getParam("topic_in",topic_in))
 	{
 	  ROS_WARN("Using default topic : %s",topic_in.c_str());
 	}
-	
+
 	ros::Subscriber cloud_sub = nh.subscribe(topic_in, 1, callback);
 	cloud_pub = nh_priv.advertise<pcl::PointCloud<pcl::PointXYZRGB> >("hsv_filtered",1);
 	point_st_pub = nh_priv.advertise<geometry_msgs::PointStamped>("average_pt",10);
