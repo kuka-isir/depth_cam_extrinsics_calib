@@ -231,7 +231,7 @@ def main(argv):
     parser.add_argument('--name', type=str,help='Transformation name (for roslaunch)',default='calib_kinect')
     parser.add_argument('-d','--dmin_between_pts', type=str,help='Distance min to get a new point',default=0.03)
     parser.add_argument('-m','--min_pts_to_start', type=str,help='Min number of points before we start calibrating',default=3)
-    args = parser.parse_args()
+    args,_ = parser.parse_known_args()
     E = Estimator(args.topic_a,args.topic_b,args.child_frame,args.parent_frame,args.name,args.dmin_between_pts,args.min_pts_to_start)
     E.start()
     
