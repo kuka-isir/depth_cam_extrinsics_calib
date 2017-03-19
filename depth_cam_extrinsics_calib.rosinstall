@@ -1,0 +1,2 @@
+- git: {local-name: depth_cam_tools, uri: 'https://github.com/kuka-isir/depth_cam_tools'}
+- git: {local-name: depth_cam_extrinsics_calib, uri: 'https://github.com/kuka-isir/depth_cam_extrinsics_calib'}

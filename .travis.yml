@@ -1,43 +1,17 @@
 sudo: required
 dist: trusty
-# Force travis to use its minimal image with default Python settings
 language: generic
-compiler:
-  - gcc
+
 env:
   global:
-    - CATKIN_WS=~/catkin_ws
-    - CATKIN_WS_SRC=${CATKIN_WS}/src
+    - UPSTREAM_WORKSPACE=https://raw.githubusercontent.com/kuka-isir/depth_cam_extrinsics_calib/master/depth_cam_extrinsics_calib.rosinstall
+    - ROS_REPOSITORY_PATH=http://packages.ros.org/ros/ubuntu
   matrix:
-    - CI_ROS_DISTRO="indigo"
-    - CI_ROS_DISTRO="jade"
-
-matrix:
-  allow_failures:
-    - env: CI_ROS_DISTRO="jade"
+    - ROS_DISTRO="indigo"
+    - ROS_DISTRO="jade"
+    - ROS_DISTRO="kinetic"
 
 install:
-  - sudo sh -c 'echo "deb http://packages.ros.org/ros/ubuntu trusty main" > /etc/apt/sources.list.d/ros-latest.list'
-  - wget http://packages.ros.org/ros.key -O - | sudo apt-key add -
-  - sudo apt-get update -qq
-  - sudo apt-get install -qq -y python-rosdep python-catkin-tools
-  - sudo apt-get install -qq -y ros-$CI_ROS_DISTRO-catkin ros-$CI_ROS_DISTRO-ros
-  - sudo rosdep init
-  - rosdep update
-  - source /opt/ros/$CI_ROS_DISTRO/setup.bash
-  - mkdir -p $CATKIN_WS_SRC
-  - ln -s $TRAVIS_BUILD_DIR $CATKIN_WS_SRC
-  - cd $CATKIN_WS
-  - catkin init
-  - cd $CATKIN_WS_SRC
-  - git clone https://github.com/kuka-isir/depth_cam_tools
-  - rosdep install -r --from-paths $CATKIN_WS_SRC/ --rosdistro $ROS_DISTRO -y
+  - git clone https://github.com/ros-industrial/industrial_ci.git .ci_config
 script:
-  # Enable install space
-  #- catkin config --install
-  # Build [and Install] packages
-  - catkin build --limit-status-rate 0.1 --no-notify -DCMAKE_BUILD_TYPE=Release
-  # Build tests
-  #- catkin build --limit-status-rate 0.1 --no-notify --make-args tests
-  # Run tests
-  #- catkin run_tests
+  - source .ci_config/travis.sh
